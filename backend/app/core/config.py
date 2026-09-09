@@ -20,5 +20,11 @@ class Settings(BaseSettings):
     # above it, tickets are drafted by the strong-tier (Groq) model instead.
     cheap_tier_urgency_threshold: float = 0.5
 
+    # Tracing (optional) — unset in a fresh env, tracing.py no-ops cleanly
+    # when either key is missing rather than erroring or degrading requests.
+    langfuse_public_key: str | None = None
+    langfuse_secret_key: str | None = None
+    langfuse_host: str = "https://cloud.langfuse.com"
+
 
 settings = Settings()

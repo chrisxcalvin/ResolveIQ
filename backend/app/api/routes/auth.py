@@ -1,10 +1,11 @@
 import uuid
 
 import jwt
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.rate_limit import limiter
 from app.core.security import create_access_token, create_refresh_token, decode_token, verify_password
 from app.db.base import get_db
 from app.models.user import User
@@ -14,7 +15,9 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 
 @router.post("/login", response_model=TokenPair)
-async def login(payload: LoginRequest, db: AsyncSession = Depends(get_db)) -> TokenPair:
+# Tighter than the app-wide default — login is the credential-stuffing target.
+@limiter.limit("5/minute")
+async def login(request: Request, payload: LoginRequest, db: AsyncSession = Depends(get_db)) -> TokenPair:
     result = await db.execute(select(User).where(User.email == payload.email))
     user = result.scalar_one_or_none()
 

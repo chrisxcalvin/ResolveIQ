@@ -22,5 +22,84 @@ services:
     ports:
       - "6379:6379"
 
+  # api and worker share the backend image: torch + CUDA + Unsloth, a
+  # 10-20GB build. Verified building via `docker compose build api`; not
+  # verified running end-to-end in this environment (see README's Quick
+  # Start). Prefer `uv run uvicorn ...` / `uv run celery ...` locally unless
+  # you've confirmed you have the disk headroom.
+  api:
+    build: ./backend
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      # Override the .env file's localhost-based URLs with the in-network
+      # service names — everything else (secrets, model config) still comes
+      # from .env via env_file above.
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-resolveiq}:${POSTGRES_PASSWORD:-resolveiq_dev_password}@postgres:5432/${POSTGRES_DB:-resolveiq}
+      REDIS_URL: redis://redis:6379/0
+    ports:
+      - "8000:8000"
+    command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    # Requires the NVIDIA Container Toolkit on the host for the cheap-tier
+    # LoRA model's GPU inference. No GPU available? Drop this block and set
+    # CHEAP_TIER_URGENCY_THRESHOLD=0 in .env — every ticket then routes to
+    # the Groq-hosted strong tier instead, no local GPU needed.
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  worker:
+    build: ./backend
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-resolveiq}:${POSTGRES_PASSWORD:-resolveiq_dev_password}@postgres:5432/${POSTGRES_DB:-resolveiq}
+      REDIS_URL: redis://redis:6379/0
+    command: celery -A app.worker worker --loglevel=info
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    # See api's note above — same GPU requirement for cheap-tier drafting.
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        # Browser-reachable address for the api's published port (not the
+        # in-network service name — this code runs client-side).
+        NEXT_PUBLIC_API_URL: http://localhost:8000
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    depends_on:
+      api:
+        condition: service_healthy
+
 volumes:
   postgres_data:

@@ -1,193 +1,247 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { ApiError, getAccessToken, listTickets, type TicketListItem } from "@/lib/api";
+import { Badge } from "@/components/ui/badge";
+import { buttonVariants } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
-type Urgency = "high" | "medium" | "low";
-type BreachRisk = "high" | "medium" | "low";
-type Status = "new" | "classified" | "drafted" | "resolved" | "escalated";
+type RiskBucket = "high" | "medium" | "low";
 
-type MockTicket = {
-  id: string;
-  maskedCustomerId: string;
-  category: string;
-  urgency: Urgency;
-  breachRisk: BreachRisk;
-  ageMinutes: number;
-  status: Status;
+const QUEUE_POLL_INTERVAL_MS = 4000;
+
+function urgencyBucket(score: number | null): RiskBucket {
+  if (score === null) return "low";
+  if (score >= 0.75) return "high";
+  if (score >= 0.4) return "medium";
+  return "low";
+}
+
+function breachRiskBucket(score: number | null): RiskBucket | null {
+  if (score === null) return null;
+  if (score >= 0.6) return "high";
+  if (score >= 0.3) return "medium";
+  return "low";
+}
+
+const RISK_BADGE_CLASS: Record<RiskBucket, string> = {
+  high: "border-transparent bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300",
+  medium: "border-transparent bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300",
+  low: "border-transparent bg-muted text-muted-foreground",
 };
 
-// Static placeholder rows for the Day 1 scaffold — this page isn't wired to
-// GET /tickets yet (that happens once the classification/breach-risk
-// pipeline exists in later days).
-const MOCK_TICKETS: MockTicket[] = [
-  { id: "TCK-1042", maskedCustomerId: "cust_***881", category: "dispute", urgency: "high", breachRisk: "high", ageMinutes: 54, status: "drafted" },
-  { id: "TCK-1041", maskedCustomerId: "cust_***224", category: "account_lock", urgency: "high", breachRisk: "medium", ageMinutes: 12, status: "new" },
-  { id: "TCK-1039", maskedCustomerId: "cust_***510", category: "payment_failure", urgency: "medium", breachRisk: "high", ageMinutes: 130, status: "classified" },
-  { id: "TCK-1035", maskedCustomerId: "cust_***097", category: "refund_delay", urgency: "medium", breachRisk: "medium", ageMinutes: 40, status: "drafted" },
-  { id: "TCK-1030", maskedCustomerId: "cust_***662", category: "general_query", urgency: "low", breachRisk: "low", ageMinutes: 8, status: "new" },
-  { id: "TCK-1024", maskedCustomerId: "cust_***331", category: "refund_delay", urgency: "low", breachRisk: "medium", ageMinutes: 200, status: "escalated" },
-];
-
-const URGENCY_STYLES: Record<Urgency, string> = {
-  high: "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300",
-  medium: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300",
-  low: "bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-400",
-};
-
-const BREACH_RISK_STYLES: Record<BreachRisk, string> = {
-  high: "border-red-500 text-red-700 dark:text-red-300",
-  medium: "border-amber-500 text-amber-700 dark:text-amber-300",
-  low: "border-neutral-400 text-neutral-500",
-};
-
-const BREACH_RISK_ORDER: Record<BreachRisk, number> = { high: 0, medium: 1, low: 2 };
-
-function formatAge(minutes: number): string {
+function formatAge(createdAt: string): string {
+  const minutes = Math.max(0, Math.floor((Date.now() - new Date(createdAt).getTime()) / 60000));
   if (minutes < 60) return `${minutes}m ago`;
   const hours = Math.floor(minutes / 60);
   return `${hours}h ${minutes % 60}m ago`;
 }
 
 export default function QueuePage() {
+  const router = useRouter();
+  const [tickets, setTickets] = useState<TicketListItem[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [urgencyFilter, setUrgencyFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
 
+  useEffect(() => {
+    if (!getAccessToken()) {
+      router.push("/login");
+      return;
+    }
+
+    let cancelled = false;
+    const load = () =>
+      listTickets()
+        .then((rows) => {
+          if (!cancelled) setTickets(rows);
+        })
+        .catch((err) => {
+          if (!cancelled) {
+            setError(err instanceof ApiError ? err.message : "Failed to load tickets");
+          }
+        });
+
+    load();
+
+    // Tickets are processed asynchronously by the worker, so a freshly
+    // submitted one arrives here as `new` and becomes `drafted` seconds
+    // later. Poll so that transition shows up without a manual refresh.
+    const handle = setInterval(load, QUEUE_POLL_INTERVAL_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(handle);
+    };
+  }, [router]);
+
   const categories = useMemo(
-    () => Array.from(new Set(MOCK_TICKETS.map((t) => t.category))),
-    []
+    () => Array.from(new Set((tickets ?? []).map((t) => t.category).filter((c): c is string => !!c))),
+    [tickets]
   );
 
-  const tickets = useMemo(() => {
-    return MOCK_TICKETS.filter(
+  const filtered = useMemo(() => {
+    return (tickets ?? []).filter(
       (t) =>
         (categoryFilter === "all" || t.category === categoryFilter) &&
-        (urgencyFilter === "all" || t.urgency === urgencyFilter) &&
+        (urgencyFilter === "all" || urgencyBucket(t.urgency_score) === urgencyFilter) &&
         (statusFilter === "all" || t.status === statusFilter)
-    ).sort((a, b) => BREACH_RISK_ORDER[a.breachRisk] - BREACH_RISK_ORDER[b.breachRisk]);
-  }, [categoryFilter, urgencyFilter, statusFilter]);
+    );
+  }, [tickets, categoryFilter, urgencyFilter, statusFilter]);
 
   const health = useMemo(() => {
     const byUrgency = { high: 0, medium: 0, low: 0 };
-    const byBreachRisk = { high: 0, medium: 0, low: 0 };
-    for (const t of MOCK_TICKETS) {
-      byUrgency[t.urgency]++;
-      byBreachRisk[t.breachRisk]++;
-    }
-    return { byUrgency, byBreachRisk };
-  }, []);
+    for (const t of tickets ?? []) byUrgency[urgencyBucket(t.urgency_score)]++;
+    return byUrgency;
+  }, [tickets]);
 
   return (
     <main className="mx-auto flex max-w-5xl flex-1 flex-col gap-6 px-4 py-8">
-      <div>
-        <h1 className="text-xl font-semibold">Ticket queue</h1>
-        <p className="text-sm text-neutral-500">
-          Sorted by breach-risk score, not raw urgency alone.
-        </p>
-      </div>
-
-      {/* Queue health strip */}
-      <div className="flex flex-wrap gap-3 rounded-lg border border-neutral-200 p-3 text-sm dark:border-neutral-800">
-        <span className="font-medium text-neutral-500">Urgency:</span>
-        <span className="text-red-600 dark:text-red-400">{health.byUrgency.high} high</span>
-        <span className="text-amber-600 dark:text-amber-400">{health.byUrgency.medium} medium</span>
-        <span className="text-neutral-500">{health.byUrgency.low} low</span>
-        <span className="mx-2 text-neutral-300 dark:text-neutral-700">|</span>
-        <span className="font-medium text-neutral-500">Breach risk:</span>
-        <span className="text-red-600 dark:text-red-400">{health.byBreachRisk.high} high</span>
-        <span className="text-amber-600 dark:text-amber-400">{health.byBreachRisk.medium} medium</span>
-        <span className="text-neutral-500">{health.byBreachRisk.low} low</span>
-      </div>
-
-      {/* Filter bar */}
-      <div className="flex flex-wrap gap-3">
-        <select
-          value={categoryFilter}
-          onChange={(e) => setCategoryFilter(e.target.value)}
-          className="rounded-md border border-neutral-300 px-2 py-1 text-sm dark:border-neutral-700 dark:bg-transparent"
-        >
-          <option value="all">All categories</option>
-          {categories.map((c) => (
-            <option key={c} value={c}>
-              {c}
-            </option>
-          ))}
-        </select>
-
-        <select
-          value={urgencyFilter}
-          onChange={(e) => setUrgencyFilter(e.target.value)}
-          className="rounded-md border border-neutral-300 px-2 py-1 text-sm dark:border-neutral-700 dark:bg-transparent"
-        >
-          <option value="all">All urgency</option>
-          <option value="high">High</option>
-          <option value="medium">Medium</option>
-          <option value="low">Low</option>
-        </select>
-
-        <select
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
-          className="rounded-md border border-neutral-300 px-2 py-1 text-sm dark:border-neutral-700 dark:bg-transparent"
-        >
-          <option value="all">All statuses</option>
-          <option value="new">New</option>
-          <option value="classified">Classified</option>
-          <option value="drafted">Drafted</option>
-          <option value="resolved">Resolved</option>
-          <option value="escalated">Escalated</option>
-        </select>
-      </div>
-
-      {/* Ticket list */}
-      {tickets.length === 0 ? (
-        <p className="py-12 text-center text-sm text-neutral-500">All caught up.</p>
-      ) : (
-        <div className="overflow-hidden rounded-lg border border-neutral-200 dark:border-neutral-800">
-          <table className="w-full text-left text-sm">
-            <thead className="border-b border-neutral-200 bg-neutral-50 text-xs uppercase text-neutral-500 dark:border-neutral-800 dark:bg-neutral-900">
-              <tr>
-                <th className="px-4 py-2">Ticket</th>
-                <th className="px-4 py-2">Customer</th>
-                <th className="px-4 py-2">Category</th>
-                <th className="px-4 py-2">Urgency</th>
-                <th className="px-4 py-2">Breach risk</th>
-                <th className="px-4 py-2">Age</th>
-                <th className="px-4 py-2">Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {tickets.map((t) => (
-                <tr
-                  key={t.id}
-                  className="border-b border-neutral-100 last:border-0 dark:border-neutral-800"
-                >
-                  <td className="px-4 py-2 font-mono text-xs">{t.id}</td>
-                  <td className="px-4 py-2 font-mono text-xs text-neutral-500">
-                    {t.maskedCustomerId}
-                  </td>
-                  <td className="px-4 py-2">{t.category}</td>
-                  <td className="px-4 py-2">
-                    <span
-                      className={`rounded-full px-2 py-0.5 text-xs font-medium ${URGENCY_STYLES[t.urgency]}`}
-                    >
-                      {t.urgency}
-                    </span>
-                  </td>
-                  <td className="px-4 py-2">
-                    <span
-                      className={`rounded-md border px-2 py-0.5 text-xs font-medium ${BREACH_RISK_STYLES[t.breachRisk]}`}
-                    >
-                      {t.breachRisk}
-                    </span>
-                  </td>
-                  <td className="px-4 py-2 text-neutral-500">{formatAge(t.ageMinutes)}</td>
-                  <td className="px-4 py-2 capitalize">{t.status}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-semibold">Ticket queue</h1>
+          <p className="text-sm text-muted-foreground">
+            Sorted by breach-risk score, falling back to urgency for tickets not yet scored.
+          </p>
         </div>
+        <Link href="/tickets/new" className={buttonVariants({ size: "sm" })}>
+          Submit a ticket
+        </Link>
+      </div>
+
+      {error && (
+        <p role="alert" className="text-sm text-destructive">
+          {error}
+        </p>
+      )}
+
+      {tickets === null && !error ? (
+        <div className="flex flex-col gap-3">
+          <Skeleton className="h-14 w-full" />
+          <Skeleton className="h-9 w-full max-w-md" />
+          <Skeleton className="h-64 w-full" />
+        </div>
+      ) : (
+        <>
+          <Card>
+            <CardContent className="flex flex-wrap items-center gap-3 text-sm">
+              <span className="font-medium text-muted-foreground">Urgency:</span>
+              <Badge className={RISK_BADGE_CLASS.high}>{health.high} high</Badge>
+              <Badge className={RISK_BADGE_CLASS.medium}>{health.medium} medium</Badge>
+              <Badge className={RISK_BADGE_CLASS.low}>{health.low} low</Badge>
+            </CardContent>
+          </Card>
+
+          <div className="flex flex-wrap gap-3">
+            <Select value={categoryFilter} onValueChange={(v) => v && setCategoryFilter(v)}>
+              <SelectTrigger>
+                <SelectValue placeholder="All categories" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All categories</SelectItem>
+                {categories.map((c) => (
+                  <SelectItem key={c} value={c}>
+                    {c}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <Select value={urgencyFilter} onValueChange={(v) => v && setUrgencyFilter(v)}>
+              <SelectTrigger>
+                <SelectValue placeholder="All urgency" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All urgency</SelectItem>
+                <SelectItem value="high">High</SelectItem>
+                <SelectItem value="medium">Medium</SelectItem>
+                <SelectItem value="low">Low</SelectItem>
+              </SelectContent>
+            </Select>
+
+            <Select value={statusFilter} onValueChange={(v) => v && setStatusFilter(v)}>
+              <SelectTrigger>
+                <SelectValue placeholder="All statuses" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All statuses</SelectItem>
+                <SelectItem value="new">New</SelectItem>
+                <SelectItem value="classified">Classified</SelectItem>
+                <SelectItem value="drafted">Drafted</SelectItem>
+                <SelectItem value="resolved">Resolved</SelectItem>
+                <SelectItem value="escalated">Escalated</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {filtered.length === 0 ? (
+            <Card>
+              <CardHeader>
+                <CardTitle>All caught up</CardTitle>
+                <CardDescription>No tickets match the current filters.</CardDescription>
+              </CardHeader>
+            </Card>
+          ) : (
+            <Card>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Ticket</TableHead>
+                    <TableHead>Customer</TableHead>
+                    <TableHead>Category</TableHead>
+                    <TableHead>Urgency</TableHead>
+                    <TableHead>Breach risk</TableHead>
+                    <TableHead>Age</TableHead>
+                    <TableHead>Status</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filtered.map((t) => {
+                    const breachRisk = breachRiskBucket(t.breach_risk_score);
+                    return (
+                      <TableRow key={t.id}>
+                        <TableCell className="font-mono text-xs">
+                          <Link href={`/tickets/${t.id}`} className="text-primary underline-offset-2 hover:underline">
+                            {t.id.slice(0, 8)}
+                          </Link>
+                        </TableCell>
+                        <TableCell className="font-mono text-xs text-muted-foreground">
+                          {t.customer_masked_identifier}
+                        </TableCell>
+                        <TableCell>{t.category ?? "—"}</TableCell>
+                        <TableCell>
+                          <Badge className={RISK_BADGE_CLASS[urgencyBucket(t.urgency_score)]}>
+                            {t.urgency_score === null ? "unscored" : urgencyBucket(t.urgency_score)}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          {breachRisk === null ? (
+                            <span className="text-xs text-muted-foreground">—</span>
+                          ) : (
+                            <Badge className={RISK_BADGE_CLASS[breachRisk]}>{breachRisk}</Badge>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-muted-foreground">{formatAge(t.created_at)}</TableCell>
+                        <TableCell className="capitalize">{t.status}</TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </Card>
+          )}
+        </>
       )}
     </main>
   );

@@ -15,6 +15,17 @@ npm-debug.log*
 .env
 .env.local
 
+# ML training artifacts — regeneratable, too large for plain git.
+# See README "Seeding & training" to rebuild these.
+backend/app/ml/finetune/artifacts/checkpoints/
+backend/app/ml/finetune/artifacts/drafting_lora/
+backend/unsloth_compiled_cache/
+
+# Generated status/report docs — local only, not for publishing
+# (the status report documents currently-unfixed security/race gaps)
+/ResolveIQ_Project_Documentation.docx
+/ResolveIQ_Status_Report.docx
+
 # Docker
 postgres_data/
 

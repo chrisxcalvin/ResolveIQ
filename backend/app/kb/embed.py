@@ -46,8 +46,11 @@ async def embed_articles() -> None:
                 db.add(document)
                 await db.flush()
             else:
+                # Re-running should replace old chunks/metadata, not duplicate
+                # them or leave stale values (e.g. a previously mis-encoded
+                # title) stuck from an earlier run.
+                document.title = title
                 document.category = category
-                # Re-running should replace old chunks, not duplicate them.
                 await db.execute(delete(KbChunk).where(KbChunk.document_id == document.id))
 
             embeddings = embed_texts(chunks)

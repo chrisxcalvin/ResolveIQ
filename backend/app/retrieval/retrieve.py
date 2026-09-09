@@ -5,6 +5,7 @@ Usage: uv run python -m app.retrieval.retrieve "<query>" [category]
 
 import asyncio
 import sys
+import uuid
 from dataclasses import dataclass
 
 from sqlalchemy import select
@@ -13,6 +14,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.base import SessionLocal
 from app.kb.embeddings import embed_text
 from app.models.kb import KbChunk, KbDocument
+
+# Feedback loop (App Flow step 7): approving a draft as-is is a signal the
+# cited chunks were good; editing it is a signal they weren't sufficient.
+# Multiplicative and clamped so repeated corrections can't drive boost to
+# zero/negative or run away unbounded.
+APPROVE_BOOST_FACTOR = 1.05
+CORRECTION_BOOST_FACTOR = 0.85
+MIN_RETRIEVAL_BOOST = 0.1
+MAX_RETRIEVAL_BOOST = 3.0
 
 
 @dataclass(frozen=True)
@@ -60,6 +70,33 @@ async def retrieve(
     await db.commit()
 
     return retrieved
+
+
+async def adjust_retrieval_boost(
+    db: AsyncSession, chunk_ids: list[uuid.UUID], *, corrected: bool
+) -> None:
+    """Feedback-loop write side: nudges retrieval_boost after a human outcome.
+
+    `corrected=True` means an agent edited the draft that cited these chunks
+    (the retrieved content wasn't sufficient on its own); `corrected=False`
+    means the agent approved it unchanged (the chunks did their job).
+
+    Does not commit — callers run this alongside other writes (the
+    resolution row, correction_signals, audit_log) in one transaction.
+    """
+    if not chunk_ids:
+        return
+
+    factor = CORRECTION_BOOST_FACTOR if corrected else APPROVE_BOOST_FACTOR
+    chunks = (
+        (await db.execute(select(KbChunk).where(KbChunk.id.in_(chunk_ids)))).scalars().all()
+    )
+    for chunk in chunks:
+        chunk.retrieval_boost = max(
+            MIN_RETRIEVAL_BOOST, min(MAX_RETRIEVAL_BOOST, chunk.retrieval_boost * factor)
+        )
+        if corrected:
+            chunk.times_corrected_against += 1
 
 
 async def _cli() -> None:
