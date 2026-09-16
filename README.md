@@ -82,14 +82,60 @@ Compose. Rationale for each choice is in
 
 ## Quick start
 
-Everything currently runs as **native processes — no Docker.** Docker
-Desktop was unstable on this project's dev machine, so Postgres and Redis
-run inside a plain WSL2 Ubuntu distro (not Docker Desktop's own WSL2
-containers), and the API/worker/frontend all run directly on the host.
-`docker-compose.yml` and the `api`/`frontend` Dockerfiles still exist and
-are kept up to date if you'd rather containerize (see the note at the
-bottom of this section), but the setup below is what's actually verified
-working day to day.
+**Database and broker are cloud-hosted** (Phase 4): Postgres+pgvector on
+[Neon](https://neon.tech) (serverless, free tier, branching), Redis on
+[Upstash](https://upstash.com) (serverless, free tier). Nothing to install
+locally for either — just two connection strings. The API, worker, and
+frontend still run as native processes on your machine (no Docker —
+Docker Desktop was unstable on this project's dev machine).
+
+```bash
+cp .env.example .env
+# fill in DATABASE_URL (Neon connection string, postgresql+asyncpg://...)
+# fill in REDIS_URL (Upstash, rediss://...?ssl_cert_reqs=CERT_REQUIRED —
+#   that query param is required, Celery's redis backend refuses to start
+#   on a rediss:// URL without it)
+# fill in GROQ_API_KEY at minimum
+
+cd backend
+uv sync
+uv run alembic upgrade head        # creates the schema on Neon
+uv run python -m app.scripts.seed_admin you@example.com yourpassword
+uv run uvicorn app.main:app --reload          # terminal 1
+uv run celery -A app.worker worker --loglevel=info --pool=solo   # terminal 2 (Windows needs --pool=solo)
+
+cd ../frontend
+npm install
+npm run dev                                    # terminal 3
+```
+
+Neon's `sslmode=require`/`channel_binding=require` query params (its
+dashboard default) work fine for the API's asyncpg connection as `?ssl=require`,
+but aren't what Celery's redis backend needs on the Upstash side — see the
+`REDIS_URL` note above.
+
+**GPU note**: the cheap-tier drafting model (a LoRA-fine-tuned Qwen2.5-0.5B)
+needs `torch` to see a local GPU. No GPU available? Set
+`CHEAP_TIER_URGENCY_THRESHOLD=0` in `.env` — every ticket then routes to the
+Groq-hosted strong tier instead, and the worker never needs to load torch
+at all.
+
+**Containerizing instead**: `docker-compose.yml` and the `api`/`frontend`
+Dockerfiles still exist if you'd rather containerize the app layer (they
+don't affect the Neon/Upstash choice either way). The `api`/`worker`
+Dockerfiles bundle torch + CUDA + Unsloth (a 10-20GB image) —
+`docker compose build api` builds just that image so you can gauge the
+size before committing to `up`; if you run it that way, the containers
+need a GPU visible via the [NVIDIA Container
+Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html).
+
+## Local/offline alternative: WSL2 instead of Neon + Upstash
+
+No internet, or want everything on one machine with zero cloud
+dependencies? Postgres+pgvector and Redis can run natively inside a plain
+WSL2 Ubuntu distro instead (not Docker Desktop's own WSL2 containers) —
+this was the setup used through Phase 3, before the Phase 4 cloud move,
+and still works if you point `.env` back at `localhost`.
 
 ### Postgres + Redis (WSL2 Ubuntu, one-time setup)
 
@@ -127,40 +173,10 @@ survive a reboot on their own):
 wsl -d Ubuntu -u root -- bash -c "service postgresql start && service redis-server start"
 ```
 
-`.env`'s `DATABASE_URL`/`REDIS_URL` already point at `localhost` — WSL2
-forwards `localhost` to the Windows host by default, so no port mapping is
-needed.
-
-### Backend + frontend
-
-```bash
-cp .env.example .env   # fill in GROQ_API_KEY at minimum
-
-cd backend
-uv sync
-uv run alembic upgrade head
-uv run python -m app.scripts.seed_admin you@example.com yourpassword
-uv run uvicorn app.main:app --reload          # terminal 1
-uv run celery -A app.worker worker --loglevel=info --pool=solo   # terminal 2 (Windows needs --pool=solo)
-
-cd frontend
-npm install
-npm run dev                                    # terminal 3
-```
-
-**GPU note**: the cheap-tier drafting model (a LoRA-fine-tuned Qwen2.5-0.5B)
-needs `torch` to see a local GPU. No GPU available? Set
-`CHEAP_TIER_URGENCY_THRESHOLD=0` in `.env` — every ticket then routes to the
-Groq-hosted strong tier instead, and the worker never needs to load torch
-at all.
-
-**Containerizing instead**: `docker compose up -d postgres redis` and
-`docker compose up --build frontend` are still valid if you'd rather not
-set up WSL2. The `api`/`worker` Dockerfiles bundle torch + CUDA + Unsloth
-(a 10-20GB image) — `docker compose build api` builds just that image so
-you can gauge the size before committing to `up`; if you do run it that
-way, the containers need a GPU visible via the [NVIDIA Container
-Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html).
+Then set `.env`'s `DATABASE_URL`/`REDIS_URL` back to the commented-out
+`localhost` values (WSL2 forwards `localhost` to the Windows host by
+default, so no port mapping is needed) and follow the same "Backend +
+frontend" steps from the Quick start section above.
 
 ## Seeding & training
 
