@@ -229,9 +229,20 @@ async def resolve_ticket(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_role("agent", "admin")),
 ) -> ResolveResponse:
-    ticket = await db.get(Ticket, ticket_id)
+    # FOR UPDATE: holds the row lock for the rest of this transaction (until
+    # commit/rollback below), so a second concurrent resolve on the same
+    # ticket blocks here rather than racing past this check — without the
+    # lock, two requests could both read status="drafted" before either
+    # commits, and both would proceed.
+    ticket = await db.get(Ticket, ticket_id, with_for_update=True)
     if ticket is None:
         raise HTTPException(status_code=404, detail="Ticket not found")
+
+    if ticket.status in ("resolved", "escalated"):
+        raise HTTPException(
+            status_code=409,
+            detail=f"Ticket is already {ticket.status} — cannot resolve it again",
+        )
 
     draft = (
         (

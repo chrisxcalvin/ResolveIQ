@@ -20,6 +20,7 @@ npm-debug.log*
 backend/app/ml/finetune/artifacts/checkpoints/
 backend/app/ml/finetune/artifacts/drafting_lora/
 backend/unsloth_compiled_cache/
+backend/app/ml/artifacts/cfpb_complaints.jsonl
 
 # Generated status/report docs — local only, not for publishing
 # (the status report documents currently-unfixed security/race gaps)
