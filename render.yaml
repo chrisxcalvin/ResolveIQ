@@ -13,7 +13,7 @@ services:
     name: resolveiq-api
     runtime: docker
     dockerfilePath: ./backend/Dockerfile.deploy
-    dockerContext: ./backend
+    dockerContext: .
     plan: free
     healthCheckPath: /health
     envVars:

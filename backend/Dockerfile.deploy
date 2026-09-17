@@ -1,5 +1,5 @@
-# Lean production image (Railway) — the API and Celery worker services
-# both use this same image, differing only in their start command.
+# Lean production image (Render) — the API and Celery worker both run in
+# this one container (see start-render.sh).
 #
 # Deliberately NOT the dev Dockerfile's `uv sync` against pyproject.toml:
 # that installs Unsloth + a CUDA-flavored torch build (10-20GB) for the
@@ -9,6 +9,10 @@
 # _load_model()) is never reached. This image installs a curated,
 # CPU-only dependency set instead (requirements-deploy.txt) — see
 # docs/checkpoints/phase-5.md for the full reasoning.
+#
+# Build context is the REPO ROOT (Render's default when no Root Directory
+# is set) — every COPY below is prefixed backend/ accordingly, so this
+# doesn't depend on guessing Render's exact context-resolution behavior.
 FROM python:3.11-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -18,14 +22,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-COPY requirements-deploy.txt ./
+COPY backend/requirements-deploy.txt ./
 RUN pip install --no-cache-dir -r requirements-deploy.txt
 RUN pip install --no-cache-dir https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl
 
-COPY alembic.ini ./alembic.ini
-COPY alembic ./alembic
-COPY app ./app
-COPY start-render.sh ./start-render.sh
+COPY backend/alembic.ini ./alembic.ini
+COPY backend/alembic ./alembic
+COPY backend/app ./app
+COPY backend/start-render.sh ./start-render.sh
 RUN chmod +x ./start-render.sh
 
 # Trained artifacts baked into the image — both are tiny (~100KB combined)
