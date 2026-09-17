@@ -1,0 +1,46 @@
+# Lean production image (Railway) — the API and Celery worker services
+# both use this same image, differing only in their start command.
+#
+# Deliberately NOT the dev Dockerfile's `uv sync` against pyproject.toml:
+# that installs Unsloth + a CUDA-flavored torch build (10-20GB) for the
+# cheap-tier drafting model. That model never runs in this deployment —
+# CHEAP_TIER_URGENCY_THRESHOLD=0 routes every ticket to the Groq-hosted
+# strong tier instead, so unsloth's own lazy import (cheap_tier.py's
+# _load_model()) is never reached. This image installs a curated,
+# CPU-only dependency set instead (requirements-deploy.txt) — see
+# docs/checkpoints/phase-5.md for the full reasoning.
+FROM python:3.11-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        build-essential \
+        curl \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY requirements-deploy.txt ./
+RUN pip install --no-cache-dir -r requirements-deploy.txt
+RUN pip install --no-cache-dir https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl
+
+COPY alembic.ini ./alembic.ini
+COPY alembic ./alembic
+COPY app ./app
+COPY start-render.sh ./start-render.sh
+RUN chmod +x ./start-render.sh
+
+# Trained artifacts baked into the image — both are tiny (~100KB combined)
+# and already committed to git (see .gitignore's comments on which ML
+# artifacts are NOT tracked, and why). The LoRA cheap-tier adapter is
+# deliberately absent here: never loaded at this threshold, gitignored,
+# and a git-based cloud build wouldn't have it even if it were needed.
+
+ENV PYTHONUNBUFFERED=1
+
+EXPOSE 8000
+
+# start-render.sh runs the Celery worker alongside uvicorn in one
+# container — see that file's own comment for why (Render's free tier
+# workaround). Harmless on any other host too: $PORT falls back to 8000
+# if unset, and running one extra background process costs nothing on a
+# platform that does give the worker its own service.
+CMD ["./start-render.sh"]

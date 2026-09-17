@@ -1,0 +1,39 @@
+# Render Blueprint — one free Web Service running both the API (uvicorn,
+# what Render health-checks) and the Celery worker (backgrounded inside
+# the same container via backend/start-render.sh). See
+# docs/checkpoints/phase-5.md for why: Render's Background Worker service
+# type requires a paid plan, so this avoids needing one at all while
+# keeping the real Celery/Redis task-queue architecture intact.
+#
+# Secrets (DATABASE_URL, REDIS_URL, JWT_SECRET, GROQ_API_KEY) are marked
+# sync: false deliberately — set them in the Render dashboard after this
+# blueprint creates the service, never commit real values here.
+services:
+  - type: web
+    name: resolveiq-api
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile.deploy
+    dockerContext: ./backend
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: REDIS_URL
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GROQ_MODEL
+        value: openai/gpt-oss-120b
+      - key: CHEAP_TIER_URGENCY_THRESHOLD
+        value: "0"
+      - key: FRONTEND_ORIGIN
+        sync: false
+      - key: ACCESS_TOKEN_EXPIRE_MINUTES
+        value: "15"
+      - key: REFRESH_TOKEN_EXPIRE_DAYS
+        value: "7"
+      - key: JWT_ALGORITHM
+        value: HS256
