@@ -332,10 +332,57 @@ embedding pipeline. Same shape of verification every previous phase
 used — an actual ticket through the actual running system, not a
 green checkmark on a deploy log.
 
-**Not yet done, going into the next phase:** the frontend isn't deployed
-anywhere yet — it still only runs on localhost. Everything verified so
-far is the backend answering direct API calls; nobody has clicked
-through the real website against the live backend yet. `FRONTEND_ORIGIN`
-on both Render services is also still set to `http://localhost:3000` and
-will need updating once Vercel produces a real URL, or the deployed
-frontend's requests will be blocked by CORS.
+---
+
+## Closing the loop: frontend deploy, two more real bugs, and the true final state
+
+**Frontend deploy (Vercel) hit a real bug on the first attempt.**
+`next.config.ts` had `output: "standalone"` set — correct for the Docker
+deployment path (`frontend/Dockerfile`), but it conflicts with Vercel's
+own serverless bundling and broke Vercel's post-build trace step
+(`ENOENT` reading a `.nft.json` file). Fixed by making it conditional on
+Vercel's own `VERCEL` environment variable, present during their builds
+and nowhere else — standalone mode now only applies for the Docker path
+it was actually written for.
+
+**The worker's sleep problem turned out to be real after all — proven,
+not assumed.** The `--pool=solo` fix (above) was necessary and correctly
+diagnosed, but it wasn't the whole story. After the frontend deploy, a
+ticket submitted through the *real website* sat at `new` for 90+ seconds
+before the frontend's own polling gave up. Checked directly rather than
+guessing: the worker actually had gone to sleep (Render's standard
+15-minute free-tier inactivity spin-down), and — this is the part worth
+understanding — **nothing about submitting a ticket ever wakes it back
+up**, because the task is queued in Redis, not delivered as an inbound
+HTTP request to the worker's own URL. The API gets woken by real users
+visiting the site; the worker has no equivalent, since it was never
+designed to receive direct traffic at all. Confirmed the specific
+ticket had, in fact, completed correctly a bit later once manually
+woken — the pipeline itself was never broken, only asleep at the moment
+it was needed.
+
+Fixed with a scheduled keep-alive ping — first attempted via
+cron-job.org (blocked on that service's own signup email never arriving,
+outside anyone's control), switched to a GitHub Actions scheduled
+workflow instead (`.github/workflows/keep-worker-awake.yml`, `cron: "*/10
+* * * *"`) pinging the worker's URL every 10 minutes, safely under
+Render's 15-minute threshold. Chosen specifically because it needed no
+new account or signup at all — the repo already has everything required.
+
+**Final verified timing, post-fix:** a ticket submitted cold, with the
+keep-awake workflow already running, went from `new` to `drafted` in 20
+seconds with zero manual intervention — down from the 90+-second hang
+(and, before that, an indefinite hang) the sleep bug produced.
+
+## True status: fully done
+
+Every piece verified live, in the order a real user would hit them: the
+actual website (`resolve-iq-dusky.vercel.app`), through the actual login
+flow, submitting a ticket that the actual deployed worker picks up and
+completes without anyone manually intervening. `FRONTEND_ORIGIN` on
+`resolveiq-api` updated from `localhost:3000` to the real Vercel URL,
+confirmed via a direct CORS preflight check before trusting the browser
+to agree. This phase is genuinely closed, not theoretically closed —
+every fix in it was verified against the real, running, deployed
+system, the same discipline that also caught every one of the four real
+"free tier" surprises documented above.
