@@ -269,13 +269,73 @@ cases: test directly, don't infer from the symptom's shape alone.
 
 ---
 
+## The actual last bug: 8 worker processes where one was intended
+
+**What did you actually build?** Added `--pool=solo` to the deployed
+worker's start command. One-line fix, but it took a real, methodical
+process to get to, worth recording because the obvious first theory
+(the free service was sleeping) was wrong and would have wasted a
+signup on a fix that couldn't have worked.
+
+**Why this approach, and what else did you consider?** After the
+two-service split and the embeddings fix, the worker deployed
+successfully, connected to Redis, and registered its task — but tickets
+still sat at `new` forever, and the logs showed the worker process
+restarting from scratch every 5-15 minutes with a fresh process ID each
+time. First theory: Render's free-tier inactivity sleep. Tested it
+directly rather than assuming — manually pinged the worker's URL to wake
+it, confirmed a clean `200`, then watched it restart again only ~5
+minutes later. That timing doesn't fit a 15-minute inactivity clock, so
+before recommending an external keep-awake cron job (which wouldn't have
+fixed a problem it wasn't causing), looked at what the restart-time logs
+actually said: `concurrency: 8 (prefork)`. Celery's default pool forks
+one child process per detected CPU core; the container was running 8
+full copies of the pipeline at once, each independently loading its own
+memory, not the single process the earlier 287MB measurement (taken in
+an isolated venv, one process) accounted for. `--pool=solo` — already
+required on Windows for local dev, for the unrelated reason that prefork
+isn't supported there at all — forces one process, no forking, which is
+plenty for this project's actual ticket volume.
+
+**What's the failure mode if this were wrong or missing?** Exactly what
+happened: a worker that deploys cleanly, connects to everything
+correctly, and still never completes a single ticket, restarting
+silently and indefinitely. Nothing in the logs says "out of memory" the
+way the earlier combined-container OOM did — Render's process supervisor
+just quietly restarts a container that exits, so the actual cause (8x
+memory multiplication) was only found by reading the startup banner
+Celery already prints on every boot, not by any new diagnostic added
+for this.
+
+**Sharp follow-up question, honestly answered:** *"How did you rule out
+the sleep theory before spending time on it, instead of just trying the
+cron job first and seeing if it worked?"* — A cron job "working" would
+have been ambiguous evidence either way: if tickets started processing
+after adding it, that could mean the sleep theory was right, or it could
+mean the extra traffic coincidentally happened to line up with something
+else. Testing the wake-state directly first (manual ping, confirmed
+`200`, watched the next restart's timing anyway) produced a clean
+disproof instead of an ambiguous coincidence — worth the extra step
+specifically because this phase had already been burned once by
+treating a symptom's shape as confirmation without checking it directly.
+
+---
+
 ## Status at time of writing
 
-Code-complete and locally verified (KB re-embedded against Neon using the
-new Hugging Face-based pipeline, confirmed correct shape and dimension,
-full test suite passing). The actual Render deploy of both services
-(`resolveiq-api` with the fix, and the new `resolveiq-worker`) was in
-progress when this checkpoint was written — a live end-to-end ticket
-verification against the deployed URLs, in the same style as every
-previous phase's live check, is the next thing to confirm before this
-phase is genuinely done, not just theoretically fixed.
+**Fully verified live**, not just deployed. Submitted a real ticket
+through the live `resolveiq-api` URL, watched the `resolveiq-worker`
+service pick it up and finish in about 8 seconds: correctly classified
+`payment_failure`, a real computed confidence score, a grounded reply
+citing two real knowledge-base sources drawn from the Hugging Face-based
+embedding pipeline. Same shape of verification every previous phase
+used — an actual ticket through the actual running system, not a
+green checkmark on a deploy log.
+
+**Not yet done, going into the next phase:** the frontend isn't deployed
+anywhere yet — it still only runs on localhost. Everything verified so
+far is the backend answering direct API calls; nobody has clicked
+through the real website against the live backend yet. `FRONTEND_ORIGIN`
+on both Render services is also still set to `http://localhost:3000` and
+will need updating once Vercel produces a real URL, or the deployed
+frontend's requests will be blocked by CORS.
