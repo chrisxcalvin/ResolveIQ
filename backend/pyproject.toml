@@ -15,7 +15,6 @@ dependencies = [
     "pgvector>=0.3",
     "email-validator>=2.2",
     "scikit-learn>=1.5",
-    "sentence-transformers>=3.2",
     "spacy>=3.8",
     "en-core-web-sm",
     "torch>=2.11",

@@ -1,5 +1,11 @@
-# Lean production image (Render) — the API and Celery worker both run in
-# this one container (see start-render.sh).
+# Lean production image (Render) — shared by two SEPARATE services, the
+# API and the worker, each with its own start command override
+# (start-render.sh / start-worker.sh) rather than sharing one container.
+# See docs/checkpoints/phase-5.md: the worker alone needed ~662MB at
+# runtime, already over the 512MB free-tier limit by itself, so combining
+# it with the API was never going to fit either way — splitting them plus
+# switching embeddings off local torch (see app/kb/embeddings.py) is what
+# actually fixed it (worker now runs at ~287MB).
 #
 # Deliberately NOT the dev Dockerfile's `uv sync` against pyproject.toml:
 # that installs Unsloth + a CUDA-flavored torch build (10-20GB) for the
@@ -30,7 +36,8 @@ COPY backend/alembic.ini ./alembic.ini
 COPY backend/alembic ./alembic
 COPY backend/app ./app
 COPY backend/start-render.sh ./start-render.sh
-RUN chmod +x ./start-render.sh
+COPY backend/start-worker.sh ./start-worker.sh
+RUN chmod +x ./start-render.sh ./start-worker.sh
 
 # Trained artifacts baked into the image — both are tiny (~100KB combined)
 # and already committed to git (see .gitignore's comments on which ML
@@ -42,9 +49,7 @@ ENV PYTHONUNBUFFERED=1
 
 EXPOSE 8000
 
-# start-render.sh runs the Celery worker alongside uvicorn in one
-# container — see that file's own comment for why (Render's free tier
-# workaround). Harmless on any other host too: $PORT falls back to 8000
-# if unset, and running one extra background process costs nothing on a
-# platform that does give the worker its own service.
+# Default CMD is the API. The worker service overrides this via Render's
+# "Docker Command" field to ./start-worker.sh instead — same image, same
+# dependencies, different entrypoint.
 CMD ["./start-render.sh"]

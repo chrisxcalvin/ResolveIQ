@@ -1,13 +1,13 @@
 # Lean production dependency set — deliberately NOT generated from
 # pyproject.toml/uv.lock. Excludes:
-#   - unsloth: only ever imported lazily inside cheap_tier.py's
+#   - unsloth, torch: only ever imported lazily inside cheap_tier.py's
 #     _load_model(), which is never called when
 #     CHEAP_TIER_URGENCY_THRESHOLD=0 (every ticket routes to the
 #     Groq-hosted strong tier in this deployment).
-#   - torch's CUDA build (the pytorch-cu126 index in pyproject.toml):
-#     not listed here at all, so pip resolves the default CPU-only wheel
-#     as sentence-transformers' transitive dependency instead — a couple
-#     hundred MB instead of several GB of unused CUDA runtime.
+#   - sentence-transformers: embeddings are computed via the Gemini API
+#     now (app/kb/embeddings.py), not a local model — this was the actual
+#     fix for the Celery worker exceeding 512MB in this container (torch's
+#     import alone cost ~385MB at runtime; see docs/checkpoints/phase-5.md).
 #   - ragas, langchain-community: eval-only (app/eval/ragas_eval.py),
 #     confirmed unreferenced anywhere in the serving path.
 #
@@ -32,7 +32,6 @@ pgvector>=0.3
 email-validator>=2.2
 scikit-learn>=1.5
 pandas>=2.0
-sentence-transformers>=3.2
 spacy>=3.8
 langgraph>=0.2
 celery[redis]>=5.4

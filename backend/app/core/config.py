@@ -20,6 +20,15 @@ class Settings(BaseSettings):
     # above it, tickets are drafted by the strong-tier (Groq) model instead.
     cheap_tier_urgency_threshold: float = 0.5
 
+    # Embeddings (app/kb/embeddings.py) — hosted via the Gemini API rather
+    # than local sentence-transformers/torch. Not a quality choice: the
+    # local model needed torch loaded in the Celery worker's memory, which
+    # alone exceeded a 512MB deployment container even before the API
+    # process shared it (see docs/checkpoints/phase-5.md). Free tier:
+    # 1,500 requests/day, no payment method required.
+    gemini_api_key: str | None = None
+    gemini_embedding_model: str = "gemini-embedding-001"
+
     # Tracing (optional) — unset in a fresh env, tracing.py no-ops cleanly
     # when either key is missing rather than erroring or degrading requests.
     langfuse_public_key: str | None = None

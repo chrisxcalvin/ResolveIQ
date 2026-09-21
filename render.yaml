@@ -1,13 +1,20 @@
-# Render Blueprint — one free Web Service running both the API (uvicorn,
-# what Render health-checks) and the Celery worker (backgrounded inside
-# the same container via backend/start-render.sh). See
-# docs/checkpoints/phase-5.md for why: Render's Background Worker service
-# type requires a paid plan, so this avoids needing one at all while
-# keeping the real Celery/Redis task-queue architecture intact.
+# Render Blueprint — two free Web Services (API and worker), NOT one
+# combined service and NOT Render's paid Background Worker product. See
+# docs/checkpoints/phase-5.md for the full story: the worker alone needed
+# ~662MB at runtime, over the 512MB free-tier limit even by itself, before
+# switching embeddings off local torch (app/kb/embeddings.py, now calls
+# the Gemini API) got it down to ~287MB — small enough to fit its own
+# free service, but never small enough to safely share one with the API.
 #
-# Secrets (DATABASE_URL, REDIS_URL, JWT_SECRET, GROQ_API_KEY) are marked
-# sync: false deliberately — set them in the Render dashboard after this
-# blueprint creates the service, never commit real values here.
+# The worker still needs to satisfy Render's Web Service requirement of
+# binding to $PORT and answering a health check, which a bare Celery
+# worker doesn't do — backend/start-worker.sh runs a trivial always-200
+# HTTP endpoint in a background thread alongside the real worker.
+#
+# Secrets (DATABASE_URL, REDIS_URL, JWT_SECRET, GROQ_API_KEY,
+# GEMINI_API_KEY) are marked sync: false deliberately — set them in the
+# Render dashboard after this blueprint creates the services, never
+# commit real values here.
 services:
   - type: web
     name: resolveiq-api
@@ -16,7 +23,7 @@ services:
     dockerContext: .
     plan: free
     healthCheckPath: /health
-    envVars:
+    envVars: &shared_env
       - key: DATABASE_URL
         sync: false
       - key: REDIS_URL
@@ -29,6 +36,8 @@ services:
         value: openai/gpt-oss-120b
       - key: CHEAP_TIER_URGENCY_THRESHOLD
         value: "0"
+      - key: GEMINI_API_KEY
+        sync: false
       - key: FRONTEND_ORIGIN
         sync: false
       - key: ACCESS_TOKEN_EXPIRE_MINUTES
@@ -37,3 +46,12 @@ services:
         value: "7"
       - key: JWT_ALGORITHM
         value: HS256
+
+  - type: web
+    name: resolveiq-worker
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile.deploy
+    dockerContext: .
+    dockerCommand: ./start-worker.sh
+    plan: free
+    envVars: *shared_env

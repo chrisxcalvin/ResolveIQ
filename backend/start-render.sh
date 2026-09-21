@@ -1,18 +1,14 @@
 #!/bin/sh
-# Render free-tier workaround: Render's Background Worker service type
-# requires a paid plan, but nothing stops a Web Service (free forever,
-# cold-starts after 15min idle) from running a second process alongside
-# the one Render actually health-checks. This starts the real Celery
-# worker in the background, then execs uvicorn in the foreground as the
-# container's main process — same Celery/Redis architecture as the rest
-# of the project, just sharing one container/service instead of two.
+# API service only. Runs alongside a SEPARATE worker service
+# (start-worker.sh) rather than sharing this container — see
+# docs/checkpoints/phase-5.md: the worker alone needed ~662MB at runtime
+# before the Gemini-embeddings + trimmed-spaCy fixes, which was already
+# over Render's 512MB free-tier limit on its own, so combining it with
+# the API in one container was never going to fit safely either way.
 set -e
 
 echo "Running migrations..."
 alembic upgrade head
-
-echo "Starting Celery worker in the background..."
-celery -A app.worker worker --loglevel=info &
 
 echo "Starting API (foreground, bound to \$PORT=${PORT:-8000})..."
 exec uvicorn app.main:app --host 0.0.0.0 --port "${PORT:-8000}"

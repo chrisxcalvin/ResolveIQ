@@ -34,7 +34,13 @@ def _load_nlp():
     # loading a model it never uses.
     import spacy
 
-    return spacy.load("en_core_web_sm")
+    # We only ever read doc.ents (PERSON spans), which needs ner (and its
+    # dependency tok2vec) — tagger/parser/attribute_ruler/lemmatizer are
+    # loaded by en_core_web_sm by default but never consulted here. Disabling
+    # them trims real memory in a container tight enough that it matters.
+    return spacy.load(
+        "en_core_web_sm", disable=["tagger", "parser", "attribute_ruler", "lemmatizer"]
+    )
 
 
 def redact(text: str) -> str:
