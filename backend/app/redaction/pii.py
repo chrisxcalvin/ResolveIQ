@@ -9,8 +9,6 @@ access control (05_Backend_Schema.md notes).
 import re
 from functools import lru_cache
 
-import spacy
-
 _EMAIL_RE = re.compile(r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}")
 # Full 10-digit (US/Canada, optional +1) OR bare local 7-digit XXX-XXXX.
 # The local-format alternative is what the original pattern missed — a
@@ -29,6 +27,13 @@ _ACCOUNT_NUMBER_RE = re.compile(r"\b\d{6,}\b")
 
 @lru_cache(maxsize=1)
 def _load_nlp():
+    # Lazy import: this module is reachable from the API process's import
+    # chain too (tickets.py -> app.tasks, just to reference process_ticket
+    # for .delay()), but only the Celery worker's pipeline ever actually
+    # calls redact(). Deferring the spacy import keeps the API process from
+    # loading a model it never uses.
+    import spacy
+
     return spacy.load("en_core_web_sm")
 
 

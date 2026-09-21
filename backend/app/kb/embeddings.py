@@ -2,15 +2,21 @@
 
 from functools import lru_cache
 
-from sentence_transformers import SentenceTransformer
-
 from app.core.tracing import observe
 
 MODEL_NAME = "all-MiniLM-L6-v2"
 
 
 @lru_cache(maxsize=1)
-def _load_model() -> SentenceTransformer:
+def _load_model():
+    # Lazy import: sentence-transformers pulls in torch (~300-500MB just to
+    # import, before loading any weights). This module gets imported by the
+    # API process too (tickets.py -> app.tasks, to reference process_ticket
+    # for .delay()), but only the Celery worker ever actually calls
+    # embed_text/embed_texts — deferring the import here keeps the API
+    # process from paying torch's memory cost for a model it never uses.
+    from sentence_transformers import SentenceTransformer
+
     return SentenceTransformer(MODEL_NAME)
 
 
