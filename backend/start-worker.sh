@@ -33,4 +33,12 @@ while True:
 " &
 
 echo "Starting Celery worker (foreground)..."
-exec celery -A app.worker worker --loglevel=info
+# Celery's default "prefork" pool spawns one child process per detected
+# CPU core - on this container that was reporting 8, so the worker was
+# actually running 8 full copies of the task pipeline at once, each with
+# its own memory. --pool=solo (single process, no fork) is what Windows
+# already forced locally for a different reason (prefork isn't supported
+# there at all) - it turns out to matter here too, for real ticket volume
+# this low, a single worker process is enough, and it keeps memory to the
+# ~287MB measured in isolation instead of an 8x multiple of it.
+exec celery -A app.worker worker --loglevel=info --pool=solo
