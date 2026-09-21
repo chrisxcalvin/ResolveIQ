@@ -40,6 +40,10 @@ async def _process_ticket_async(ticket_id: str) -> None:
         )
         draft_result = state["draft_result"]
         decision = state["decision"]
+        chunks = state.get("chunks") or []
+        avg_retrieval_similarity = (
+            sum(c.similarity for c in chunks) / len(chunks) if chunks else None
+        )
 
         ticket.redacted_text = state["redacted_text"]
         ticket.category = state["category"]
@@ -65,6 +69,7 @@ async def _process_ticket_async(ticket_id: str) -> None:
                 detail={
                     "category": state["category"],
                     "category_confidence": state["category_confidence"],
+                    "avg_retrieval_similarity": avg_retrieval_similarity,
                     "urgency_score": state["urgency_score"],
                     "urgency_confidence": state["urgency_confidence"],
                     "breach_risk_score": state["breach_risk_score"],

@@ -169,6 +169,8 @@ export type TicketDetail = {
   customer_history: CustomerHistoryItem[];
   specialist_flagged: boolean;
   decision_reason: string | null;
+  category_confidence: number | null;
+  avg_retrieval_similarity: number | null;
 };
 
 export type ResolveAction = "approve" | "edit" | "escalate";

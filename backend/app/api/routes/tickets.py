@@ -194,9 +194,13 @@ async def get_ticket(
     ).scalar_one_or_none()
     specialist_flagged = False
     decision_reason = None
+    category_confidence = None
+    avg_retrieval_similarity = None
     if latest_drafted_event is not None:
         specialist_flagged = bool(latest_drafted_event.detail.get("specialist_flagged", False))
         decision_reason = latest_drafted_event.detail.get("decision_reason")
+        category_confidence = latest_drafted_event.detail.get("category_confidence")
+        avg_retrieval_similarity = latest_drafted_event.detail.get("avg_retrieval_similarity")
 
     return TicketDetail(
         id=ticket.id,
@@ -219,6 +223,8 @@ async def get_ticket(
         ],
         specialist_flagged=specialist_flagged,
         decision_reason=decision_reason,
+        category_confidence=category_confidence,
+        avg_retrieval_similarity=avg_retrieval_similarity,
     )
 
 

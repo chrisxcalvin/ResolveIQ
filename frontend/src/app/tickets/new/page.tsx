@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -12,7 +12,6 @@ import {
 } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -23,6 +22,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { PipelineTrace, type TraceStage } from "@/components/pipeline-trace";
 import { cn } from "@/lib/utils";
 
 // The pipeline runs on the Celery worker, so the ticket lands as `new` and
@@ -36,45 +36,47 @@ const SAMPLE_TICKET =
   "My payment failed but I can still see the charge pending on my statement, " +
   "was I actually charged?";
 
-type Stage = {
+type StageDef = {
   key: string;
   label: string;
   detail: (t: TicketDetail) => string | null;
 };
 
 // Mirrors app/pipeline/graph.py. Each stage reports done once the field it
-// writes is present on the ticket.
-const STAGES: Stage[] = [
+// writes is present on the ticket. Draft and route land in the same
+// backend pass (decide() runs right after drafting, in one graph
+// execution), so from polling snapshots those two stages complete together
+// — that's the real shape of the pipeline, not a UI simplification.
+const STAGE_DEFS: StageDef[] = [
   {
     key: "redact",
-    label: "Redact PII",
+    label: "Redacted",
     detail: (t) => (t.redacted_text ? "PII masked before any model call" : null),
   },
   {
     key: "classify",
-    label: "Classify",
-    detail: (t) =>
-      t.category
-        ? `${t.category} · urgency ${t.urgency_score?.toFixed(2) ?? "—"}`
-        : null,
+    label: "Classified",
+    detail: (t) => (t.category ? `${t.category}, urgency ${t.urgency_score?.toFixed(2) ?? "—"}` : null),
   },
   {
-    key: "breach_risk",
-    label: "Score breach risk",
-    detail: (t) =>
-      t.breach_risk_score !== null ? `breach risk ${t.breach_risk_score.toFixed(2)}` : null,
+    key: "score",
+    label: "Scored",
+    detail: (t) => (t.breach_risk_score !== null ? `breach risk ${t.breach_risk_score.toFixed(2)}` : null),
   },
   {
     key: "retrieve",
-    label: "Retrieve sources",
-    detail: (t) =>
-      t.draft ? `${t.draft.sources.length} knowledge base chunk(s) cited` : null,
+    label: "Retrieved",
+    detail: (t) => (t.draft ? `${t.draft.sources.length} source(s) cited` : null),
   },
   {
     key: "draft",
-    label: "Draft reply",
-    detail: (t) =>
-      t.draft ? `confidence ${t.draft.confidence?.toFixed(2) ?? "—"}` : null,
+    label: "Drafted",
+    detail: (t) => (t.draft ? `confidence ${((t.draft.confidence ?? 0) * 100).toFixed(0)}%` : null),
+  },
+  {
+    key: "route",
+    label: "Routed",
+    detail: (t) => (t.draft ? (t.specialist_flagged ? "specialist" : "standard") : null),
   },
 ];
 
@@ -156,13 +158,20 @@ export default function NewTicketPage() {
   const done = ticket !== null && TERMINAL_STATUSES.includes(ticket.status);
   const seconds = (elapsed / 1000).toFixed(1);
 
+  const stages: TraceStage[] = useMemo(() => {
+    const activeIndex = watching
+      ? STAGE_DEFS.findIndex((def) => (ticket ? def.detail(ticket) : null) === null)
+      : -1;
+    return STAGE_DEFS.map((def, i) => {
+      const detail = ticket ? def.detail(ticket) : null;
+      return { key: def.key, label: def.label, done: detail !== null, active: i === activeIndex, detail };
+    });
+  }, [ticket, watching]);
+
   return (
     <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-6 px-4 py-8">
       <div>
-        <Link
-          href="/queue"
-          className="text-sm text-muted-foreground underline-offset-2 hover:underline"
-        >
+        <Link href="/queue" className="text-sm text-muted-foreground underline-offset-2 hover:underline">
           ← Back to queue
         </Link>
         <h1 className="mt-2 text-xl font-semibold">Submit a ticket</h1>
@@ -173,14 +182,14 @@ export default function NewTicketPage() {
         </p>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Incoming message</CardTitle>
-          <CardDescription>
+      <div className="border border-border">
+        <div className="border-b border-border px-5 py-3">
+          <h2 className="text-sm font-medium">Incoming message</h2>
+          <p className="mt-0.5 text-xs text-muted-foreground">
             Write as the customer would. Include an email or card number to see redaction work.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
+          </p>
+        </div>
+        <div className="px-5 py-4">
           <form onSubmit={handleSubmit} className="flex flex-col gap-4">
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="flex flex-col gap-1.5">
@@ -190,6 +199,7 @@ export default function NewTicketPage() {
                   required
                   value={customerId}
                   onChange={(e) => setCustomerId(e.target.value)}
+                  className="rounded-sm"
                 />
                 <p className="text-xs text-muted-foreground">
                   Reuse an identifier to build history for that customer.
@@ -199,7 +209,7 @@ export default function NewTicketPage() {
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="channel">Channel</Label>
                 <Select value={channel} onValueChange={(v) => v && setChannel(v)}>
-                  <SelectTrigger id="channel">
+                  <SelectTrigger id="channel" className="rounded-sm">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -230,6 +240,7 @@ export default function NewTicketPage() {
                 value={rawText}
                 onChange={(e) => setRawText(e.target.value)}
                 placeholder="My payment failed but I was still charged..."
+                className="rounded-sm"
               />
             </div>
 
@@ -243,53 +254,31 @@ export default function NewTicketPage() {
               {submitting ? "Submitting..." : watching ? "Processing..." : "Submit ticket"}
             </Button>
           </form>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
 
       {(watching || ticket) && (
-        <Card>
-          <CardHeader>
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <CardTitle className="text-base">Pipeline</CardTitle>
-              <div className="flex items-center gap-2">
-                <Badge variant="outline">{ticket?.status ?? "new"}</Badge>
-                <span className="text-xs tabular-nums text-muted-foreground">{seconds}s</span>
-              </div>
+        <div className="border border-border">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-5 py-3">
+            <div>
+              <h2 className="text-sm font-medium">Pipeline</h2>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                {done
+                  ? "Pipeline finished — the draft is ready for review."
+                  : timedOut
+                    ? "Still processing after 90s. The worker may be busy or stopped."
+                    : "Running on the Celery worker..."}
+              </p>
             </div>
-            <CardDescription>
-              {done
-                ? "Pipeline finished — the draft is ready for review."
-                : timedOut
-                  ? "Still processing after 90s. The worker may be busy or stopped."
-                  : "Running on the Celery worker..."}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-3">
-            <ol className="flex flex-col gap-2">
-              {STAGES.map((stage) => {
-                const detail = ticket ? stage.detail(ticket) : null;
-                const complete = detail !== null;
-                return (
-                  <li key={stage.key} className="flex items-start gap-3 text-sm">
-                    <span
-                      aria-hidden
-                      className={
-                        "mt-1.5 size-2 shrink-0 rounded-full " +
-                        (complete ? "bg-emerald-500" : "bg-muted-foreground/30")
-                      }
-                    />
-                    <span className="flex flex-col">
-                      <span className={complete ? "font-medium" : "text-muted-foreground"}>
-                        {stage.label}
-                      </span>
-                      {detail && (
-                        <span className="text-xs text-muted-foreground">{detail}</span>
-                      )}
-                    </span>
-                  </li>
-                );
-              })}
-            </ol>
+            <div className="flex items-center gap-2">
+              <Badge variant="outline" className="rounded-sm capitalize">
+                {ticket?.status ?? "new"}
+              </Badge>
+              <span className="font-data text-xs text-muted-foreground">{seconds}s</span>
+            </div>
+          </div>
+          <div className="flex flex-col gap-4 px-5 py-4">
+            <PipelineTrace stages={stages} />
 
             {timedOut && (
               <p role="alert" className="text-sm text-destructive">
@@ -304,10 +293,7 @@ export default function NewTicketPage() {
                   href={`/tickets/${ticket.id}`}
                   aria-disabled={!done}
                   tabIndex={done ? undefined : -1}
-                  className={cn(
-                    buttonVariants({ size: "sm" }),
-                    !done && "pointer-events-none opacity-50"
-                  )}
+                  className={cn(buttonVariants({ size: "sm" }), !done && "pointer-events-none opacity-50")}
                 >
                   Open ticket
                 </Link>
@@ -316,8 +302,8 @@ export default function NewTicketPage() {
                 </Link>
               </div>
             )}
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       )}
     </main>
   );

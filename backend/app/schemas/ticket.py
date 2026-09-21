@@ -68,6 +68,8 @@ class TicketDetail(BaseModel):
     customer_history: list[CustomerHistoryItem]
     specialist_flagged: bool = False
     decision_reason: str | None = None
+    category_confidence: float | None = None
+    avg_retrieval_similarity: float | None = None
 
 
 class ResolveRequest(BaseModel):
