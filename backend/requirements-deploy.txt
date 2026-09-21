@@ -10,6 +10,14 @@
 #     hundred MB instead of several GB of unused CUDA runtime.
 #   - ragas, langchain-community: eval-only (app/eval/ragas_eval.py),
 #     confirmed unreferenced anywhere in the serving path.
+#
+# pandas is included explicitly even though it's not a direct dependency
+# in pyproject.toml — app/ml/breach_risk.py imports it directly for live
+# breach-risk scoring, and it was only ever present locally as someone
+# else's transitive dependency (most likely ragas/langchain-community,
+# both excluded above). Verified by AST-scanning every serving-path
+# module's imports against this file rather than assuming the top-level
+# pyproject.toml dependency list was complete.
 # See docs/checkpoints/phase-5.md for the full reasoning.
 
 fastapi>=0.115
@@ -23,6 +31,7 @@ argon2-cffi>=23.1
 pgvector>=0.3
 email-validator>=2.2
 scikit-learn>=1.5
+pandas>=2.0
 sentence-transformers>=3.2
 spacy>=3.8
 langgraph>=0.2
