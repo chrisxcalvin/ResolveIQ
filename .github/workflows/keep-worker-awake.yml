@@ -1,0 +1,23 @@
+name: Keep Render worker awake
+
+# Render's free tier spins a Web Service down after 15 minutes with no
+# inbound HTTP traffic — fine for the API (real users visiting the site
+# count as traffic), but the Celery worker never receives HTTP traffic in
+# normal operation (it only polls Redis), so nothing ever resets that
+# clock on its own. See docs/checkpoints/phase-5.md.
+#
+# This pings the worker's own URL every 10 minutes (under the 15-minute
+# threshold) so it never falls asleep. Uses GitHub Actions instead of an
+# external cron service — already available on this repo, no new account.
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch: {} # lets you trigger a manual run from the Actions tab
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping resolveiq-worker
+        run: curl -sf -m 30 https://resolveiq-1-38lg.onrender.com/ && echo "worker responded OK"
