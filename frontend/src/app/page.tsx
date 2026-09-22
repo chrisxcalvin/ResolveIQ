@@ -68,13 +68,17 @@ export default function LandingPage() {
         </div>
       </header>
 
-      {/* Hero */}
-      <section className="relative overflow-hidden border-b border-border">
+      {/* Hero — flows into Feature 1 with no hard border; the dot-grid
+          background is continuous underneath both, and a hard line right
+          after the canvas made that gap read as a dead stop rather than a
+          transition. */}
+      <section className="relative overflow-hidden">
         <div
           aria-hidden
           className="pointer-events-none absolute -top-40 left-1/2 h-[560px] w-[900px] -translate-x-1/2 rounded-full bg-primary/10 blur-[120px]"
         />
-        <div className="relative mx-auto flex max-w-7xl flex-col gap-14 px-8 py-28 lg:py-36">
+        <div className="relative mx-auto flex max-w-7xl flex-col gap-14 px-8 pt-28 pb-16 lg:pt-36 lg:pb-20">
+
           <motion.div
             initial="hidden"
             animate="show"
@@ -111,6 +115,24 @@ export default function LandingPage() {
           >
             <PipelineHeroCanvas />
           </motion.div>
+
+          <motion.div
+            aria-hidden
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.6, delay: 0.8 }}
+            className="flex justify-center"
+          >
+            <motion.div
+              animate={{ y: [0, 6, 0] }}
+              transition={{ duration: 1.8, repeat: Infinity, ease: "easeInOut" }}
+              className="text-muted-foreground"
+            >
+              <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                <path d="M4 7l6 6 6-6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </motion.div>
+          </motion.div>
         </div>
       </section>
 
@@ -120,7 +142,7 @@ export default function LandingPage() {
           aria-hidden
           className="pointer-events-none absolute top-1/2 right-0 h-[420px] w-[420px] -translate-y-1/2 translate-x-1/3 rounded-full bg-primary/6 blur-[100px]"
         />
-        <div className="relative mx-auto grid max-w-7xl gap-16 px-8 py-28 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)] lg:items-center lg:py-32">
+        <div className="relative mx-auto grid max-w-7xl gap-16 px-8 pt-16 pb-28 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)] lg:items-center lg:pt-20 lg:pb-32">
           <Reveal className="flex flex-col gap-5">
             <h2 className="text-4xl font-semibold tracking-tight sm:text-5xl">
               One panel, not four tabs.
