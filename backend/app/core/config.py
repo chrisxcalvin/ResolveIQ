@@ -36,5 +36,11 @@ class Settings(BaseSettings):
     langfuse_secret_key: str | None = None
     langfuse_host: str = "https://cloud.langfuse.com"
 
+    # Off by default — see docs/checkpoints/phase-7.md for why. When set, a
+    # narrow slice of very-high-confidence, non-account-specific tickets can
+    # resolve with zero human touch instead of just being fast-tracked for
+    # one-click approval.
+    auto_resolve_threshold: float | None = None
+
 
 settings = Settings()

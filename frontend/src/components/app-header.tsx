@@ -16,7 +16,10 @@ export function AppHeader() {
   const pathname = usePathname();
   const router = useRouter();
 
-  if (pathname === "/login") return null;
+  // "/" (the marketing landing page) and /portal (the public customer
+  // surface, Phase 7) each have their own header, kept fully separate from
+  // this agent-only one rather than branching one component three ways.
+  if (pathname === "/login" || pathname === "/" || pathname.startsWith("/portal")) return null;
 
   return (
     <header className="sticky top-0 z-10 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">

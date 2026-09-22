@@ -3,12 +3,26 @@
 import asyncio
 import uuid
 
+from sqlalchemy import select
+
+from app.core.config import settings
 from app.db.base import SessionLocal
 from app.models.audit_log import AuditLog
 from app.models.ticket import Ticket
 from app.models.ticket_draft import TicketDraft
+from app.models.ticket_resolution import TicketResolution
+from app.models.user import User
 from app.pipeline.graph import run_pipeline
 from app.worker import celery_app
+
+# Sentinel actor for AUTO_RESOLVE_THRESHOLD (Phase 7, off by default) — the
+# `TicketResolution.agent_id` FK is NOT NULL, so an AI-only resolution still
+# needs a real `User` row to point at. Seeded by
+# app/scripts/seed_portal_demo.py. Never logged in as (no real login flow
+# exists for it) — it exists purely so the audit trail's agent_id FK
+# resolves, while AuditLog.event_type="auto_resolved" is what actually
+# marks the resolution as AI-only, not this account.
+SYSTEM_USER_EMAIL = "system@resolveiq.internal"
 
 
 # `SessionLocal`'s async engine (app/db/base.py) is a module-level singleton
@@ -51,6 +65,7 @@ async def _process_ticket_async(ticket_id: str) -> None:
         ticket.breach_risk_score = state["breach_risk_score"]
         # "drafted" only when a real draft exists; a fallback/no-context
         # result stays "classified" so the queue can distinguish the two.
+        # An auto-resolved ticket (below) overrides this to "resolved".
         ticket.status = "drafted" if draft_result.tier in ("cheap", "strong") else "classified"
 
         db.add(
@@ -59,6 +74,7 @@ async def _process_ticket_async(ticket_id: str) -> None:
                 draft_text=draft_result.draft_text,
                 confidence=draft_result.confidence,
                 source_chunk_ids=[uuid.UUID(cid) for cid in draft_result.source_chunk_ids],
+                fast_path_eligible=decision.fast_path_eligible,
             )
         )
 
@@ -78,10 +94,50 @@ async def _process_ticket_async(ticket_id: str) -> None:
                     "source_chunk_ids": draft_result.source_chunk_ids,
                     "needs_review": decision.needs_review,
                     "specialist_flagged": decision.specialist_flagged,
+                    "fast_path_eligible": decision.fast_path_eligible,
                     "decision_reason": decision.reason,
                 },
                 actor="system",
             )
         )
+
+        # AUTO_RESOLVE_THRESHOLD (off by default, see docs/checkpoints/phase-7.md)
+        # — the only path that ever resolves a ticket with no human agent.
+        # Logged as a distinct event_type, never folded into "drafted" or
+        # a normal agent "approved" event, so the audit trail always shows
+        # whether a human was involved.
+        if decision.auto_resolved:
+            system_user = (
+                await db.execute(select(User).where(User.email == SYSTEM_USER_EMAIL))
+            ).scalar_one_or_none()
+            if system_user is None:
+                raise RuntimeError(
+                    f"AUTO_RESOLVE_THRESHOLD is set but the sentinel system user "
+                    f"({SYSTEM_USER_EMAIL}) doesn't exist — run "
+                    f"app.scripts.seed_portal_demo first."
+                )
+
+            ticket.status = "resolved"
+            db.add(
+                TicketResolution(
+                    ticket_id=ticket.id,
+                    final_text=draft_result.draft_text,
+                    action="approved",
+                    agent_id=system_user.id,
+                )
+            )
+            db.add(
+                AuditLog(
+                    ticket_id=ticket.id,
+                    event_type="auto_resolved",
+                    detail={
+                        "resolved_by": "ai_auto",
+                        "draft_confidence": draft_result.confidence,
+                        "auto_resolve_threshold": settings.auto_resolve_threshold,
+                        "decision_reason": decision.reason,
+                    },
+                    actor="system",
+                )
+            )
 
         await db.commit()

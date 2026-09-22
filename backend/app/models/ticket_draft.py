@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Float, ForeignKey, String, func
+from sqlalchemy import Boolean, Float, ForeignKey, String, func
 from sqlalchemy.dialects.postgresql import ARRAY, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -18,6 +18,9 @@ class TicketDraft(Base):
     source_chunk_ids: Mapped[list[uuid.UUID] | None] = mapped_column(
         ARRAY(UUID(as_uuid=True)), nullable=True
     )
+    # High-confidence, non-account-specific drafts (see app/decision/decide.py)
+    # — surfaced in the agent queue for one-click approval, per Phase 7.
+    fast_path_eligible: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
     ticket: Mapped["Ticket"] = relationship(back_populates="drafts")

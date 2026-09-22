@@ -14,6 +14,7 @@ from typing import TypedDict
 from langgraph.graph import END, StateGraph
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.core.tracing import observe
 from app.decision.decide import Decision, decide
 from app.drafting.customer_context import build_customer_history_summary
@@ -90,8 +91,16 @@ def build_graph(db: AsyncSession):
 
     @observe(name="decide")
     async def decide_node(state: PipelineState) -> dict:
+        chunks = state.get("chunks") or []
+        avg_retrieval_similarity = (
+            sum(c.similarity for c in chunks) / len(chunks) if chunks else None
+        )
         result = decide(
-            state["category"], state["urgency_score"], state["draft_result"].confidence
+            state["category"],
+            state["urgency_score"],
+            state["draft_result"].confidence,
+            avg_retrieval_similarity=avg_retrieval_similarity,
+            auto_resolve_threshold=settings.auto_resolve_threshold,
         )
         return {"decision": result}
 
