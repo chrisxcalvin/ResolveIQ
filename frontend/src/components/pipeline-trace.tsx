@@ -23,11 +23,11 @@ export function PipelineTrace({ stages }: { stages: TraceStage[] }) {
               <span
                 aria-hidden
                 data-state={stage.done ? "done" : stage.active ? "active" : "pending"}
-                className="size-2 shrink-0 rounded-full bg-border data-[state=active]:animate-pulse data-[state=active]:bg-signal-medium data-[state=done]:bg-signal-low"
+                className="size-2.5 shrink-0 rounded-full bg-border data-[state=active]:animate-pulse data-[state=active]:bg-signal-medium data-[state=done]:bg-signal-low"
               />
               <span
                 className={
-                  "text-xs font-medium " +
+                  "text-sm font-semibold " +
                   (stage.done || stage.active ? "text-foreground" : "text-muted-foreground")
                 }
               >
@@ -35,7 +35,7 @@ export function PipelineTrace({ stages }: { stages: TraceStage[] }) {
               </span>
             </div>
             {stage.detail && (
-              <span className="font-data text-[0.7rem] text-muted-foreground">
+              <span className="font-data text-xs text-muted-foreground">
                 {stage.detail}
               </span>
             )}

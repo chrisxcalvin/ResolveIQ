@@ -31,13 +31,13 @@ export default function AuditLogPage() {
   }, [router]);
 
   return (
-    <main className="mx-auto flex max-w-4xl flex-1 flex-col gap-6 px-4 py-8">
+    <main className="mx-auto flex max-w-4xl flex-1 flex-col gap-6 px-4 py-10">
       <div>
         <Link href="/queue" className="text-sm text-muted-foreground underline-offset-2 hover:underline">
           ← Back to queue
         </Link>
-        <h1 className="mt-2 text-xl font-semibold">Audit log</h1>
-        <p className="text-sm text-muted-foreground">
+        <h1 className="mt-2 text-2xl font-semibold tracking-tight">Audit log</h1>
+        <p className="mt-1 text-base text-muted-foreground">
           Every state transition — submission, drafting, and human resolution — with its
           reasoning data. Most recent 100 events.
         </p>
@@ -51,23 +51,23 @@ export default function AuditLogPage() {
 
       {entries === null && !error ? (
         <div className="flex flex-col gap-2">
-          <Skeleton className="h-10 w-full rounded-sm" />
-          <Skeleton className="h-10 w-full rounded-sm" />
-          <Skeleton className="h-10 w-full rounded-sm" />
+          <Skeleton className="h-12 w-full rounded-sm" />
+          <Skeleton className="h-12 w-full rounded-sm" />
+          <Skeleton className="h-12 w-full rounded-sm" />
         </div>
       ) : entries && entries.length === 0 ? (
-        <div className="border border-dashed border-border px-5 py-6">
-          <p className="text-sm font-medium">No events recorded yet</p>
+        <div className="border border-dashed border-border bg-card px-6 py-8">
+          <p className="text-base font-medium">No events recorded yet</p>
           <p className="mt-1 text-sm text-muted-foreground">
             Ticket state transitions will show up here as they happen.
           </p>
         </div>
       ) : (
         entries && (
-          <div className="border border-border">
+          <div className="border border-border bg-card">
             {entries.map((e) => (
               <Collapsible key={e.id} className="border-b border-border last:border-b-0">
-                <CollapsibleTrigger className="group/trigger flex w-full cursor-pointer items-center justify-between gap-3 px-4 py-2.5 text-sm hover:bg-accent">
+                <CollapsibleTrigger className="group/trigger flex w-full cursor-pointer items-center justify-between gap-3 px-5 py-3.5 text-sm hover:bg-accent">
                   <span className="flex items-center gap-3">
                     <Badge variant="outline" className="rounded-sm capitalize">
                       {e.event_type}
@@ -75,19 +75,19 @@ export default function AuditLogPage() {
                     <Link
                       href={`/tickets/${e.ticket_id}`}
                       onClick={(ev) => ev.stopPropagation()}
-                      className="font-data text-xs text-muted-foreground underline-offset-2 hover:underline"
+                      className="font-data text-sm text-muted-foreground underline-offset-2 hover:underline"
                     >
                       {e.ticket_id.slice(0, 8)}
                     </Link>
                   </span>
-                  <span className="flex items-center gap-2 font-data text-xs text-muted-foreground">
+                  <span className="flex items-center gap-2 font-data text-sm text-muted-foreground">
                     {formatTimestamp(e.created_at)}
-                    <ChevronDownIcon className="size-3.5 transition-transform group-data-[panel-open]/trigger:rotate-180" />
+                    <ChevronDownIcon className="size-4 transition-transform group-data-[panel-open]/trigger:rotate-180" />
                   </span>
                 </CollapsibleTrigger>
                 <CollapsibleContent>
-                  <div className="px-4 pb-3">
-                    <pre className="overflow-x-auto border border-border bg-muted/40 p-2.5 font-data text-xs text-muted-foreground">
+                  <div className="px-5 pb-4">
+                    <pre className="overflow-x-auto border border-border bg-background p-3 font-data text-xs text-muted-foreground">
                       {JSON.stringify(e.detail, null, 2)}
                     </pre>
                   </div>

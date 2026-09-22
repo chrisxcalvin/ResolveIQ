@@ -169,47 +169,47 @@ export default function NewTicketPage() {
   }, [ticket, watching]);
 
   return (
-    <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-6 px-4 py-8">
+    <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-6 px-4 py-10">
       <div>
         <Link href="/queue" className="text-sm text-muted-foreground underline-offset-2 hover:underline">
           ← Back to queue
         </Link>
-        <h1 className="mt-2 text-xl font-semibold">Submit a ticket</h1>
-        <p className="text-sm text-muted-foreground">
+        <h1 className="mt-2 text-2xl font-semibold tracking-tight">Submit a ticket</h1>
+        <p className="mt-1 text-base text-muted-foreground">
           Submits through the same public API a real channel would use. The pipeline runs on
           the worker, so you can watch the ticket move from <code>new</code> to{" "}
           <code>drafted</code> below.
         </p>
       </div>
 
-      <div className="border border-border">
-        <div className="border-b border-border px-5 py-3">
-          <h2 className="text-sm font-medium">Incoming message</h2>
-          <p className="mt-0.5 text-xs text-muted-foreground">
+      <div className="border border-border bg-card">
+        <div className="border-b border-border px-6 py-4">
+          <h2 className="text-base font-semibold">Incoming message</h2>
+          <p className="mt-0.5 text-sm text-muted-foreground">
             Write as the customer would. Include an email or card number to see redaction work.
           </p>
         </div>
-        <div className="px-5 py-4">
-          <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-            <div className="grid gap-4 sm:grid-cols-2">
+        <div className="px-6 py-5">
+          <form onSubmit={handleSubmit} className="flex flex-col gap-5">
+            <div className="grid gap-5 sm:grid-cols-2">
               <div className="flex flex-col gap-1.5">
-                <Label htmlFor="customer">Customer identifier</Label>
+                <Label htmlFor="customer" className="text-sm">Customer identifier</Label>
                 <Input
                   id="customer"
                   required
                   value={customerId}
                   onChange={(e) => setCustomerId(e.target.value)}
-                  className="rounded-sm"
+                  className="rounded-sm bg-background text-base"
                 />
-                <p className="text-xs text-muted-foreground">
+                <p className="text-sm text-muted-foreground">
                   Reuse an identifier to build history for that customer.
                 </p>
               </div>
 
               <div className="flex flex-col gap-1.5">
-                <Label htmlFor="channel">Channel</Label>
+                <Label htmlFor="channel" className="text-sm">Channel</Label>
                 <Select value={channel} onValueChange={(v) => v && setChannel(v)}>
-                  <SelectTrigger id="channel" className="rounded-sm">
+                  <SelectTrigger id="channel" className="rounded-sm bg-background text-base">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -224,11 +224,11 @@ export default function NewTicketPage() {
 
             <div className="flex flex-col gap-1.5">
               <div className="flex items-center justify-between">
-                <Label htmlFor="body">Message</Label>
+                <Label htmlFor="body" className="text-sm">Message</Label>
                 <button
                   type="button"
                   onClick={() => setRawText(SAMPLE_TICKET)}
-                  className="text-xs text-muted-foreground underline-offset-2 hover:underline"
+                  className="text-sm text-muted-foreground underline-offset-2 hover:underline"
                 >
                   Use sample message
                 </button>
@@ -240,7 +240,7 @@ export default function NewTicketPage() {
                 value={rawText}
                 onChange={(e) => setRawText(e.target.value)}
                 placeholder="My payment failed but I was still charged..."
-                className="rounded-sm"
+                className="rounded-sm bg-background text-base"
               />
             </div>
 
@@ -258,11 +258,11 @@ export default function NewTicketPage() {
       </div>
 
       {(watching || ticket) && (
-        <div className="border border-border">
-          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-5 py-3">
+        <div className="border border-border bg-card">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-6 py-4">
             <div>
-              <h2 className="text-sm font-medium">Pipeline</h2>
-              <p className="mt-0.5 text-xs text-muted-foreground">
+              <h2 className="text-base font-semibold">Pipeline</h2>
+              <p className="mt-0.5 text-sm text-muted-foreground">
                 {done
                   ? "Pipeline finished — the draft is ready for review."
                   : timedOut
@@ -274,10 +274,10 @@ export default function NewTicketPage() {
               <Badge variant="outline" className="rounded-sm capitalize">
                 {ticket?.status ?? "new"}
               </Badge>
-              <span className="font-data text-xs text-muted-foreground">{seconds}s</span>
+              <span className="font-data text-sm text-muted-foreground">{seconds}s</span>
             </div>
           </div>
-          <div className="flex flex-col gap-4 px-5 py-4">
+          <div className="flex flex-col gap-5 px-6 py-5">
             <PipelineTrace stages={stages} />
 
             {timedOut && (
@@ -293,11 +293,11 @@ export default function NewTicketPage() {
                   href={`/tickets/${ticket.id}`}
                   aria-disabled={!done}
                   tabIndex={done ? undefined : -1}
-                  className={cn(buttonVariants({ size: "sm" }), !done && "pointer-events-none opacity-50")}
+                  className={cn(buttonVariants({}), !done && "pointer-events-none opacity-50")}
                 >
                   Open ticket
                 </Link>
-                <Link href="/queue" className={buttonVariants({ size: "sm", variant: "outline" })}>
+                <Link href="/queue" className={buttonVariants({ variant: "outline" })}>
                   Back to queue
                 </Link>
               </div>

@@ -31,34 +31,34 @@ export default function LoginPage() {
 
   return (
     <main className="flex flex-1 items-center justify-center px-4">
-      <div className="w-full max-w-sm border border-border">
-        <div className="border-b border-border px-5 py-4">
-          <h1 className="text-lg font-semibold">ResolveIQ</h1>
-          <p className="text-sm text-muted-foreground">Sign in to your agent account</p>
+      <div className="w-full max-w-sm border border-border bg-card">
+        <div className="border-b border-border px-6 py-5">
+          <h1 className="text-xl font-semibold tracking-tight">ResolveIQ</h1>
+          <p className="mt-1 text-sm text-muted-foreground">Sign in to your agent account</p>
         </div>
-        <div className="px-5 py-4">
+        <div className="px-6 py-5">
           <form onSubmit={handleSubmit} className="flex flex-col gap-4">
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="email">Email</Label>
+              <Label htmlFor="email" className="text-sm">Email</Label>
               <Input
                 id="email"
                 type="email"
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="rounded-sm"
+                className="rounded-sm bg-background text-base"
               />
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="password">Password</Label>
+              <Label htmlFor="password" className="text-sm">Password</Label>
               <Input
                 id="password"
                 type="password"
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="rounded-sm"
+                className="rounded-sm bg-background text-base"
               />
             </div>
 
@@ -73,7 +73,7 @@ export default function LoginPage() {
             </Button>
           </form>
 
-          <p className="mt-6 text-xs text-muted-foreground">
+          <p className="mt-6 text-sm text-muted-foreground">
             No public sign-up — accounts are admin-provisioned.
           </p>
         </div>
