@@ -38,7 +38,13 @@ const TECH_STACK = ["FastAPI", "LangGraph", "Celery", "Next.js", "PostgreSQL + p
 
 export default function LandingPage() {
   return (
-    <div className="flex flex-1 flex-col">
+    <div
+      className="relative flex flex-1 flex-col"
+      style={{
+        backgroundImage: "radial-gradient(circle, #232a32 1px, transparent 1px)",
+        backgroundSize: "32px 32px",
+      }}
+    >
       {/* Nav */}
       <header className="border-b border-border">
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-5 sm:h-20 sm:px-8">
@@ -109,8 +115,12 @@ export default function LandingPage() {
       </section>
 
       {/* Feature 1: single pane */}
-      <section className="border-b border-border">
-        <div className="mx-auto grid max-w-7xl gap-16 px-8 py-28 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)] lg:items-center lg:py-32">
+      <section className="relative overflow-hidden border-b border-border">
+        <div
+          aria-hidden
+          className="pointer-events-none absolute top-1/2 right-0 h-[420px] w-[420px] -translate-y-1/2 translate-x-1/3 rounded-full bg-primary/6 blur-[100px]"
+        />
+        <div className="relative mx-auto grid max-w-7xl gap-16 px-8 py-28 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)] lg:items-center lg:py-32">
           <Reveal className="flex flex-col gap-5">
             <h2 className="text-4xl font-semibold tracking-tight sm:text-5xl">
               One panel, not four tabs.
@@ -162,8 +172,12 @@ export default function LandingPage() {
       </section>
 
       {/* Feature 3: fast-path speed */}
-      <section className="border-b border-border">
-        <div className="mx-auto grid max-w-7xl gap-16 px-8 py-28 lg:grid-cols-2 lg:items-center lg:py-32">
+      <section className="relative overflow-hidden border-b border-border">
+        <div
+          aria-hidden
+          className="pointer-events-none absolute top-1/2 left-0 h-[420px] w-[420px] -translate-x-1/3 -translate-y-1/2 rounded-full bg-primary/6 blur-[100px]"
+        />
+        <div className="relative mx-auto grid max-w-7xl gap-16 px-8 py-28 lg:grid-cols-2 lg:items-center lg:py-32">
           <Reveal className="order-2 lg:order-1">
             <div className="border border-border bg-card p-8">
               <div className="mb-2.5 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
