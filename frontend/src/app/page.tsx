@@ -36,6 +36,70 @@ const PIPELINE_STAGES: [string, string][] = [
 
 const TECH_STACK = ["FastAPI", "LangGraph", "Celery", "Next.js", "PostgreSQL + pgvector", "Groq"];
 
+const STANDARD_STEPS = ["Open ticket", "Read message", "Search knowledge base", "Write reply", "Send"];
+const STEP_DELAY = 0.32;
+
+// The pacing here is the actual point, not just decoration: standard-path
+// steps reveal one at a time, slowly, because that's really five separate
+// actions — then the fast-path result appears in one quick beat right
+// after, dramatizing the speed difference the copy next to this describes
+// instead of just stating it in words.
+function FastPathComparison() {
+  const faqDelay = STANDARD_STEPS.length * STEP_DELAY + 0.25;
+
+  return (
+    <motion.div
+      initial="hidden"
+      whileInView="show"
+      viewport={{ once: true, margin: "-80px" }}
+      className="border border-border bg-card p-8"
+    >
+      <div className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+        Standard ticket
+      </div>
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-lg leading-relaxed">
+        {STANDARD_STEPS.map((step, i) => (
+          <span key={step} className="flex items-center gap-2">
+            {i > 0 && (
+              <motion.span
+                variants={fadeUp}
+                transition={{ duration: 0.3, delay: i * STEP_DELAY - 0.1 }}
+                className="text-muted-foreground"
+                aria-hidden
+              >
+                →
+              </motion.span>
+            )}
+            <motion.span variants={fadeUp} transition={{ duration: 0.35, delay: i * STEP_DELAY }}>
+              {step}
+            </motion.span>
+          </span>
+        ))}
+      </div>
+
+      <div className="my-6 h-px bg-border" />
+
+      <div className="mb-2.5 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+        High-confidence FAQ match
+      </div>
+      <motion.div
+        variants={{ hidden: { opacity: 0, scale: 0.97 }, show: { opacity: 1, scale: 1 } }}
+        transition={{ duration: 0.2, delay: faqDelay, ease: "easeOut" }}
+        className="text-lg leading-relaxed"
+      >
+        Draft is already flagged for one-click approval. Agent reads it, hits{" "}
+        <motion.span
+          variants={{ hidden: { opacity: 0 }, show: { opacity: 1 } }}
+          transition={{ duration: 0.3, delay: faqDelay + 0.15 }}
+          className="inline-block rounded-sm bg-primary/15 px-2 py-0.5 font-data text-primary"
+        >
+          Approve draft
+        </motion.span>
+      </motion.div>
+    </motion.div>
+  );
+}
+
 export default function LandingPage() {
   return (
     <div
@@ -182,14 +246,28 @@ export default function LandingPage() {
               status badge.
             </p>
           </Reveal>
-          <Reveal className="grid grid-cols-2 gap-px overflow-hidden border border-border bg-border sm:grid-cols-4">
+          <motion.div
+            initial="hidden"
+            whileInView="show"
+            viewport={{ once: true, margin: "-80px" }}
+            transition={{ staggerChildren: 0.12 }}
+            className="grid grid-cols-2 gap-px overflow-hidden border border-border bg-border sm:grid-cols-4"
+          >
+            {/* Staggered, not a single block fade — these are sequential
+                pipeline stages, so the reveal itself mirrors "one thing
+                happens, then the next," not just a decorative entrance. */}
             {PIPELINE_STAGES.map(([label, detail]) => (
-              <div key={label} className="bg-background px-6 py-6">
+              <motion.div
+                key={label}
+                variants={fadeUp}
+                transition={{ duration: 0.5, ease: "easeOut" }}
+                className="bg-background px-6 py-6"
+              >
                 <div className="text-base font-semibold">{label}</div>
                 <div className="mt-1.5 text-sm text-muted-foreground">{detail}</div>
-              </div>
+              </motion.div>
             ))}
-          </Reveal>
+          </motion.div>
         </div>
       </section>
 
@@ -200,24 +278,9 @@ export default function LandingPage() {
           className="pointer-events-none absolute top-1/2 left-0 h-[420px] w-[420px] -translate-x-1/3 -translate-y-1/2 rounded-full bg-primary/6 blur-[100px]"
         />
         <div className="relative mx-auto grid max-w-7xl gap-16 px-8 py-28 lg:grid-cols-2 lg:items-center lg:py-32">
-          <Reveal className="order-2 lg:order-1">
-            <div className="border border-border bg-card p-8">
-              <div className="mb-2.5 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-                Standard ticket
-              </div>
-              <div className="text-lg leading-relaxed">
-                Open ticket → read message → search knowledge base → write reply → send.
-              </div>
-              <div className="my-6 h-px bg-border" />
-              <div className="mb-2.5 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-                High-confidence FAQ match
-              </div>
-              <div className="text-lg leading-relaxed">
-                Draft is already flagged for one-click approval. Agent reads it, hits{" "}
-                <span className="font-data text-primary">Approve draft</span>.
-              </div>
-            </div>
-          </Reveal>
+          <div className="order-2 lg:order-1">
+            <FastPathComparison />
+          </div>
           <Reveal className="order-1 flex flex-col gap-5 lg:order-2">
             <h2 className="text-4xl font-semibold tracking-tight sm:text-5xl">
               Fast-tracked, never auto-sent.

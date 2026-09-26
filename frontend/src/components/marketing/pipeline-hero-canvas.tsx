@@ -15,8 +15,9 @@ const SIGNAL_LOW = "#3fb27f";
 const LANE_COLOR = "#2a313a";
 const LABEL_COLOR = "#8b96a3";
 const PARTICLE_COUNT = 12;
+const FLASH_DURATION_MS = 450;
 
-type Particle = { progress: number; speed: number; yAmplitude: number };
+type Particle = { progress: number; prevProgress: number; speed: number; yAmplitude: number };
 
 export function PipelineHeroCanvas() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -45,9 +46,15 @@ export function PipelineHeroCanvas() {
 
     const particles: Particle[] = Array.from({ length: PARTICLE_COUNT }, (_, i) => ({
       progress: i / PARTICLE_COUNT,
+      prevProgress: i / PARTICLE_COUNT,
       speed: 0.00022 + Math.random() * 0.00018,
       yAmplitude: 8 + Math.random() * 10,
     }));
+
+    // A stage "flashes" the moment a particle actually crosses it — not a
+    // constant idle pulse — so the motion reads as "this stage just did
+    // something to this ticket," not ambient decoration.
+    const stageFlashAt = new Array(STAGE_LABELS.length).fill(-Infinity);
 
     let raf = 0;
 
@@ -72,8 +79,37 @@ export function PipelineHeroCanvas() {
       ctx!.lineTo(width - marginX, laneY);
       ctx!.stroke();
 
+      // Update particles first and detect stage crossings, so this
+      // frame's dot draw already reflects any flash that just triggered.
+      for (const p of particles) {
+        p.prevProgress = p.progress;
+        if (!reduceMotion) {
+          p.progress += p.speed * dt;
+          if (p.progress > 1) p.progress -= 1;
+        }
+        for (let s = 0; s < stageCount; s++) {
+          const stageProgress = s / (stageCount - 1);
+          const crossed =
+            p.progress >= stageProgress && p.prevProgress < stageProgress && p.progress - p.prevProgress < 0.5;
+          if (crossed) stageFlashAt[s] = now;
+        }
+      }
+
       for (let s = 0; s < stageCount; s++) {
         const x = marginX + (usableWidth * s) / (stageCount - 1);
+        const sinceFlash = now - stageFlashAt[s];
+        const flash = sinceFlash < FLASH_DURATION_MS ? 1 - sinceFlash / FLASH_DURATION_MS : 0;
+        const radius = 3.5 + flash * 3;
+
+        if (flash > 0) {
+          ctx!.beginPath();
+          ctx!.arc(x, laneY, radius, 0, Math.PI * 2);
+          ctx!.fillStyle = SIGNAL_MEDIUM;
+          ctx!.globalAlpha = flash * 0.8;
+          ctx!.fill();
+          ctx!.globalAlpha = 1;
+        }
+
         ctx!.beginPath();
         ctx!.arc(x, laneY, 3.5, 0, Math.PI * 2);
         ctx!.fillStyle = LANE_COLOR;
@@ -91,10 +127,6 @@ export function PipelineHeroCanvas() {
       }
 
       for (const p of particles) {
-        if (!reduceMotion) {
-          p.progress += p.speed * dt;
-          if (p.progress > 1) p.progress -= 1;
-        }
         const x = marginX + usableWidth * p.progress;
         const y = laneY - Math.sin(p.progress * Math.PI) * p.yAmplitude;
         const nearEnd = p.progress > 0.88;
