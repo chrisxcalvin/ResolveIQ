@@ -6,9 +6,12 @@ name: Keep Render worker awake
 # normal operation (it only polls Redis), so nothing ever resets that
 # clock on its own. See docs/checkpoints/phase-5.md.
 #
-# This pings the worker's own URL every 10 minutes (under the 15-minute
-# threshold) so it never falls asleep. Uses GitHub Actions instead of an
-# external cron service — already available on this repo, no new account.
+# This pings the worker's own URL on a 10-minute schedule. BEST-EFFORT
+# ONLY: GitHub does not guarantee scheduled runs on free repos, and this
+# one was observed actually firing every 3-6 hours, not every 10 minutes
+# (docs/checkpoints/phase-5.md, "Correction"). The real fix is the API
+# waking the worker at ticket submission (app/core/worker_wake.py, needs
+# WORKER_WAKE_URL set on the API service); this stays as a cheap backup.
 
 on:
   schedule:

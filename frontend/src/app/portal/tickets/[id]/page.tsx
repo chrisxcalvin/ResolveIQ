@@ -8,6 +8,9 @@ import { getPortalTicket, type PortalTicketStatus } from "@/lib/portal-api";
 import { PipelineTrace, type TraceStage } from "@/components/pipeline-trace";
 
 const POLL_INTERVAL_MS = 3000;
+// Past this with the ticket still untouched, say why instead of leaving a
+// silent spinner that looks like nothing is happening.
+const SLOW_START_MS = 15_000;
 const TERMINAL_STATUSES = ["resolved", "escalated"];
 
 type StageDef = { key: string; label: string; done: (t: PortalTicketStatus) => boolean };
@@ -22,16 +25,19 @@ export default function PortalTicketStatusPage() {
   const { id } = useParams<{ id: string }>();
   const [ticket, setTicket] = useState<PortalTicketStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [slowStart, setSlowStart] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     let handle: ReturnType<typeof setInterval> | null = null;
+    const watchingSince = Date.now();
 
     const load = () =>
       getPortalTicket(id)
         .then((t) => {
           if (cancelled) return;
           setTicket(t);
+          setSlowStart(t.status === "new" && Date.now() - watchingSince > SLOW_START_MS);
           if (TERMINAL_STATUSES.includes(t.status) && handle) {
             clearInterval(handle);
           }
@@ -85,7 +91,9 @@ export default function PortalTicketStatusPage() {
                 ? ticket.status === "resolved"
                   ? "A reply is ready below."
                   : "This request needed a specialist and is being handled directly."
-                : "We're reviewing your request..."}
+                : slowStart
+                  ? "Still starting up — the first request after a quiet period can take up to a minute or two while our servers wake up. Your request is safely received."
+                  : "We're reviewing your request..."}
             </p>
           </div>
           <div className="flex flex-col gap-5 px-6 py-5">

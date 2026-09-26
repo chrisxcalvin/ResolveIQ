@@ -42,5 +42,12 @@ class Settings(BaseSettings):
     # one-click approval.
     auto_resolve_threshold: float | None = None
 
+    # Public URL of the deployed Celery worker's trivial health handler
+    # (start-worker.sh). Set ONLY on the API service in production — see
+    # app/core/worker_wake.py for why a queued task alone can't wake a
+    # sleeping free-tier worker. Unset (the default) makes the wake-up a
+    # no-op, which is correct locally where the worker is run by hand.
+    worker_wake_url: str | None = None
+
 
 settings = Settings()

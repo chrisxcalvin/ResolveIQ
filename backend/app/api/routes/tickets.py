@@ -1,11 +1,12 @@
 import uuid
 from difflib import SequenceMatcher
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import require_role
+from app.core.worker_wake import wake_worker
 from app.db.base import get_db
 from app.models.audit_log import AuditLog
 from app.models.correction_signal import CorrectionSignal
@@ -41,6 +42,7 @@ HISTORY_LOOKBACK = 5
 @router.post("", response_model=TicketOut, status_code=201)
 async def submit_ticket(
     payload: TicketCreate,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_role("agent", "admin")),
 ) -> Ticket:
@@ -76,6 +78,7 @@ async def submit_ticket(
     # Async processing (classify -> retrieve -> draft -> decide) — the API
     # returns immediately, per the App Flow's ticket lifecycle.
     process_ticket.delay(str(ticket.id))
+    background_tasks.add_task(wake_worker)
 
     return ticket
 

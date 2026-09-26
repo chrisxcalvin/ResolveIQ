@@ -9,10 +9,11 @@ the agent-facing schemas expose.
 
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.worker_wake import wake_worker
 from app.db.base import get_db
 from app.models.audit_log import AuditLog
 from app.models.customer import Customer
@@ -54,7 +55,9 @@ async def list_demo_customers(db: AsyncSession = Depends(get_db)) -> list[Custom
 
 @router.post("/tickets", response_model=PortalTicketCreated, status_code=201)
 async def submit_portal_ticket(
-    payload: PortalTicketCreate, db: AsyncSession = Depends(get_db)
+    payload: PortalTicketCreate,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
 ) -> Ticket:
     customer = await _get_demo_customer(db, payload.customer_id)
 
@@ -77,6 +80,7 @@ async def submit_portal_ticket(
     # Async processing, same code path submit_ticket() (agent side) uses —
     # the pipeline has no idea which channel a ticket came from.
     process_ticket.delay(str(ticket.id))
+    background_tasks.add_task(wake_worker)
 
     return ticket
 

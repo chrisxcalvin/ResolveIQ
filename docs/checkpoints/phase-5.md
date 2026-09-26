@@ -386,3 +386,72 @@ to agree. This phase is genuinely closed, not theoretically closed —
 every fix in it was verified against the real, running, deployed
 system, the same discipline that also caught every one of the four real
 "free tier" surprises documented above.
+
+---
+
+## Correction (2026-09-26): the keep-alive was never reliable
+
+**What this checkpoint claimed above:** that a GitHub Actions cron
+(`*/10 * * * *`) keeps the Render worker awake, "verified" by a 20-second
+cold-ticket test with the workflow running. **That claim was wrong in a way
+that mattered.** It was verified in a short window and never observed over
+time. GitHub treats scheduled workflows on free repos as best-effort; the
+real run history for Sept 23-26 shows a gap of roughly 3-6 hours between
+runs (e.g. 11:20, 06:04, 00:57, 22:42 UTC), plus two outright failures. A
+free-tier worker sleeps after 15 idle minutes, so it was asleep almost all
+the time — exactly the failure the cron was supposed to prevent.
+
+**How it surfaced:** a ticket submitted through the customer portal sat at
+`new` and "nothing happened." Diagnosing it turned up three separate
+failures, only one of which was the sleeping worker.
+
+1. **Ruled out the input.** Ran the real pipeline locally, read-only, on
+   the exact ticket text: 11 seconds, correct classification, a real
+   draft. So the problem was environmental, not the ticket.
+2. **Queue length was 0 but the ticket was still `new`.** Something had
+   consumed the task without finishing it.
+3. **A local Celery worker started on Sept 22 was still running on the
+   developer's laptop**, attached to the production Redis and production
+   database (the local `.env` points at production since Phase 4). It had
+   been silently competing with the real worker for four days. Its log
+   showed it received exactly this task and died on the first DB read:
+   `ConnectionDoesNotExistError: connection was closed in the middle of
+   operation` — a stale pooled Neon connection. Celery acks early, so the
+   task was lost, not retried. The harness had reported that background
+   task as "stopped" and it was taken at face value instead of checking
+   that the OS process was actually gone. Over four days it consumed
+   exactly one production task: this one.
+
+**Fixes (all in this repo):**
+
+- Killed the zombie, re-enqueued the ticket, confirmed it processed
+  (`drafted`, confidence 0.42659…, identical to the local dry run).
+- **Wake the worker on submission, not on a schedule**
+  (`app/core/worker_wake.py`): submitting a ticket now fires a best-effort
+  background ping at the worker's URL, so the wake-up is tied to the event
+  that needs it. Requires `WORKER_WAKE_URL` set on the API service; unset
+  it's a no-op. The GitHub cron remains only as a backup.
+- **`pool_pre_ping=True` + `pool_recycle=240`** on the engine
+  (`app/db/base.py`). Reproduced the failure client-side first — without
+  pre-ping the first query on a dead pooled connection raised; with it, it
+  recovered silently.
+- **Bounded retries + a visible failure record:** `process_ticket` now
+  retries transient errors 3 times with backoff, and a final failure writes
+  a `pipeline_failed` audit event instead of vanishing. Exercised against
+  Celery's real retry machinery with an always-failing task: 4 attempts,
+  one failure recorded. Deliberately **not** `acks_late`: on a 512MB
+  worker, a task that OOM-kills the process would be redelivered and kill
+  it again, turning one bad ticket into a crash loop.
+- Portal now says why a slow first request is slow instead of showing a
+  silent spinner.
+
+**Sharp follow-up question, honestly answered:** *"Why didn't you catch the
+zombie sooner?"* — Nothing checked. A "stopped" label from the tooling is
+a claim, not a fact, and the same mistake this phase already made three
+times with "free tier" claims. *"Is it fixed for good?"* — The class of
+bug where a local process silently consumes production work is only
+mitigated, not removed: local `.env` still points at production, so any
+locally-run worker is a production consumer. The real fix is a separate
+local queue or Redis, not built here. Also unverified at time of writing:
+the wake-on-submit path has not yet been observed against a genuinely cold
+production worker, since it needs `WORKER_WAKE_URL` set on Render first.

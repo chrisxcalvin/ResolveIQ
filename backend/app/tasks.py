@@ -1,9 +1,11 @@
 """Celery task: runs a ticket through the full AI pipeline."""
 
 import asyncio
+import logging
 import uuid
 
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.db.base import SessionLocal
@@ -14,6 +16,8 @@ from app.models.ticket_resolution import TicketResolution
 from app.models.user import User
 from app.pipeline.graph import run_pipeline
 from app.worker import celery_app
+
+logger = logging.getLogger(__name__)
 
 # Sentinel actor for AUTO_RESOLVE_THRESHOLD (Phase 7, off by default) — the
 # `TicketResolution.agent_id` FK is NOT NULL, so an AI-only resolution still
@@ -38,7 +42,57 @@ SYSTEM_USER_EMAIL = "system@resolveiq.internal"
 _loop = asyncio.new_event_loop()
 
 
-@celery_app.task(name="process_ticket")
+async def _record_failure(db: AsyncSession, ticket_id: str, exc: BaseException) -> None:
+    # First line only, truncated: SQLAlchemy errors embed the whole failing
+    # statement and its bound parameters in str(exc), which has no business
+    # being copied wholesale into an audit row.
+    first_line = (str(exc).splitlines() or [""])[0][:300]
+    db.add(
+        AuditLog(
+            ticket_id=uuid.UUID(ticket_id),
+            event_type="pipeline_failed",
+            detail={"error_type": type(exc).__name__, "error": first_line},
+            actor="system",
+        )
+    )
+    await db.commit()
+
+
+class _ProcessTicketTask(celery_app.Task):
+    """Turns a final, retries-exhausted failure into an audit-log entry.
+
+    Without this a failed task left no trace anywhere: the ticket just sat at
+    "new" forever and the only evidence was a traceback in a worker log
+    nobody was reading (docs/checkpoints/phase-7.md, the lost-task
+    incident). on_failure fires only after autoretry gives up, not on each
+    retry.
+    """
+
+    def on_failure(self, exc, task_id, args, kwargs, einfo):
+        async def _write() -> None:
+            async with SessionLocal() as db:
+                await _record_failure(db, args[0], exc)
+
+        try:
+            _loop.run_until_complete(_write())
+        except Exception:
+            logger.exception("Could not record pipeline failure for ticket %s", args[0])
+
+
+# Bounded retries with backoff (5s, 10s, 20s, capped at 60s) for transient
+# failures - a Groq/Hugging Face blip, a dropped DB connection. Deliberately
+# NOT acks_late: on a 512MB free-tier worker, a task that OOM-kills the
+# process would be redelivered and kill it again, turning one bad ticket
+# into a crash loop that blocks every other ticket behind it.
+@celery_app.task(
+    name="process_ticket",
+    base=_ProcessTicketTask,
+    autoretry_for=(Exception,),
+    retry_backoff=5,
+    retry_backoff_max=60,
+    retry_jitter=True,
+    max_retries=3,
+)
 def process_ticket(ticket_id: str) -> None:
     _loop.run_until_complete(_process_ticket_async(ticket_id))
 

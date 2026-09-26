@@ -18,7 +18,13 @@ import { PipelineTrace, type TraceStage } from "@/components/pipeline-trace";
 import { cn } from "@/lib/utils";
 
 const POLL_INTERVAL_MS = 1500;
-const POLL_TIMEOUT_MS = 90_000;
+// A fully cold backend (free-tier host spinning back up, then loading its
+// models) can legitimately take a couple of minutes before the first stage
+// moves, so this is generous on purpose.
+const POLL_TIMEOUT_MS = 180_000;
+// Past this with the ticket still untouched, say why instead of leaving a
+// silent spinner that looks like nothing is happening.
+const SLOW_START_MS = 15_000;
 const TERMINAL_STATUSES = ["resolved", "escalated"];
 
 // Deliberately coarser than the agent-facing trace — no confidence
@@ -45,6 +51,7 @@ export default function PortalNewTicketPage() {
   const [ticket, setTicket] = useState<PortalTicketStatus | null>(null);
   const [watching, setWatching] = useState(false);
   const [timedOut, setTimedOut] = useState(false);
+  const [slowStart, setSlowStart] = useState(false);
 
   const timers = useRef<ReturnType<typeof setInterval>[]>([]);
 
@@ -70,6 +77,7 @@ export default function PortalNewTicketPage() {
     if (!customerId) return;
     setError(null);
     setTimedOut(false);
+    setSlowStart(false);
     setTicket(null);
     setSubmitting(true);
 
@@ -87,6 +95,7 @@ export default function PortalNewTicketPage() {
         try {
           const latest = await getPortalTicket(created.id);
           setTicket(latest);
+          setSlowStart(latest.status === "new" && Date.now() - startedAt > SLOW_START_MS);
           if (TERMINAL_STATUSES.includes(latest.status)) {
             stopPolling();
           } else if (Date.now() - startedAt > POLL_TIMEOUT_MS) {
@@ -184,7 +193,9 @@ export default function PortalNewTicketPage() {
                   : "This request needed a specialist and is being handled directly."
                 : timedOut
                   ? "Still working on it — check back shortly."
-                  : "We're reviewing your request..."}
+                  : slowStart
+                    ? "Still starting up — the first request after a quiet period can take up to a minute or two while our servers wake up. Your request is safely received."
+                    : "We're reviewing your request..."}
             </p>
           </div>
           <div className="flex flex-col gap-5 px-6 py-5">
