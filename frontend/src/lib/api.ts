@@ -50,6 +50,21 @@ export function clearTokens() {
   localStorage.removeItem(REFRESH_TOKEN_KEY);
 }
 
+// Decoded client-side for display only ("is this ticket claimed by me?") —
+// never trusted as an auth boundary. The real enforcement is server-side
+// (require_role + the assigned_agent_id check in resolve_ticket/claim_ticket).
+export function getCurrentUserId(): string | null {
+  const token = getAccessToken();
+  if (!token) return null;
+  try {
+    const payload = token.split(".")[1];
+    const json = atob(payload.replace(/-/g, "+").replace(/_/g, "/"));
+    return JSON.parse(json).sub ?? null;
+  } catch {
+    return null;
+  }
+}
+
 // Access tokens live 15 minutes (backend ACCESS_TOKEN_EXPIRE_MINUTES). A
 // ticket submission + review pass routinely runs longer than that, and the
 // queue view polls every few seconds in the background — without a refresh
@@ -131,6 +146,8 @@ export type TicketListItem = {
   breach_risk_score: number | null;
   status: string;
   created_at: string;
+  assigned_agent_id: string | null;
+  assigned_agent_email: string | null;
 };
 
 export type SourceOut = {
@@ -171,6 +188,9 @@ export type TicketDetail = {
   decision_reason: string | null;
   category_confidence: number | null;
   avg_retrieval_similarity: number | null;
+  specialist_reviewed: boolean;
+  assigned_agent_id: string | null;
+  assigned_agent_email: string | null;
 };
 
 export type ResolveAction = "approve" | "edit" | "escalate";
@@ -212,6 +232,22 @@ export async function listTickets(): Promise<TicketListItem[]> {
 
 export async function getTicket(id: string): Promise<TicketDetail> {
   const res = await authedFetch(`/tickets/${id}`);
+  return res.json();
+}
+
+export type ClaimResponse = {
+  id: string;
+  assigned_agent_id: string;
+  assigned_agent_email: string;
+};
+
+export async function claimTicket(id: string): Promise<ClaimResponse> {
+  const res = await authedFetch(`/tickets/${id}/claim`, { method: "POST" });
+  return res.json();
+}
+
+export async function unclaimTicket(id: string): Promise<TicketCreated> {
+  const res = await authedFetch(`/tickets/${id}/unclaim`, { method: "POST" });
   return res.json();
 }
 

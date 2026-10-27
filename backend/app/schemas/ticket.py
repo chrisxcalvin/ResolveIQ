@@ -30,6 +30,8 @@ class TicketListItem(BaseModel):
     breach_risk_score: float | None
     status: str
     created_at: datetime
+    assigned_agent_id: uuid.UUID | None = None
+    assigned_agent_email: str | None = None
 
 
 class SourceOut(BaseModel):
@@ -70,6 +72,9 @@ class TicketDetail(BaseModel):
     decision_reason: str | None = None
     category_confidence: float | None = None
     avg_retrieval_similarity: float | None = None
+    specialist_reviewed: bool = False
+    assigned_agent_id: uuid.UUID | None = None
+    assigned_agent_email: str | None = None
 
 
 class ResolveRequest(BaseModel):
@@ -82,3 +87,9 @@ class ResolveResponse(BaseModel):
     id: uuid.UUID
     status: str
     action: str
+
+
+class ClaimResponse(BaseModel):
+    id: uuid.UUID
+    assigned_agent_id: uuid.UUID
+    assigned_agent_email: str

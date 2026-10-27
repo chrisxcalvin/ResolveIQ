@@ -3,6 +3,9 @@
 Groq/local-model calls needed to test either.
 """
 
+from dataclasses import dataclass
+
+import app.drafting.draft as draft_module
 from app.drafting.draft import UNAVAILABLE_MESSAGE, _estimate_confidence, draft
 from app.retrieval.retrieve import RetrievedChunk
 
@@ -67,3 +70,56 @@ def test_unavailable_message_constant_is_distinct_from_refusal_message():
     which failure mode actually happened."""
     result = draft(ticket_text="x", chunks=[], urgency_score=0.1, category_confidence=0.5)
     assert result.draft_text != UNAVAILABLE_MESSAGE
+
+
+# --- force_strong_tier (Phase 9 specialist-review branch) -------------------
+
+@dataclass(frozen=True)
+class _FakeCheapResult:
+    reply: str = "cheap tier reply"
+
+
+@dataclass(frozen=True)
+class _FakeStrongResult:
+    reply: str = "strong tier reply"
+    source_chunk_ids: list = None
+
+    def __post_init__(self):
+        if self.source_chunk_ids is None:
+            object.__setattr__(self, "source_chunk_ids", ["c1"])
+
+
+def test_low_urgency_normally_uses_cheap_tier(monkeypatch):
+    monkeypatch.setattr(draft_module, "draft_cheap_tier", lambda *a, **k: _FakeCheapResult())
+    monkeypatch.setattr(
+        draft_module,
+        "draft_strong_tier",
+        lambda *a, **k: (_ for _ in ()).throw(AssertionError("strong tier should not be called")),
+    )
+    result = draft(
+        ticket_text="x", chunks=[_chunk(0.9)], urgency_score=0.1, category_confidence=0.9
+    )
+    assert result.tier == "cheap"
+    assert result.draft_text == "cheap tier reply"
+
+
+def test_force_strong_tier_bypasses_urgency_based_tier_selection(monkeypatch):
+    """The Phase 9 specialist-review node forces the strong tier regardless
+    of urgency — a low-urgency ticket that would normally get the cheap
+    tier must still go to the strong tier when force_strong_tier=True."""
+    monkeypatch.setattr(
+        draft_module,
+        "draft_cheap_tier",
+        lambda *a, **k: (_ for _ in ()).throw(AssertionError("cheap tier should not be called")),
+    )
+    monkeypatch.setattr(draft_module, "draft_strong_tier", lambda *a, **k: _FakeStrongResult())
+    result = draft(
+        ticket_text="x",
+        chunks=[_chunk(0.9)],
+        urgency_score=0.1,
+        category_confidence=0.9,
+        force_strong_tier=True,
+    )
+    assert result.tier == "strong"
+    assert result.draft_text == "strong tier reply"
+    assert result.source_chunk_ids == ["c1"]

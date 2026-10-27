@@ -150,6 +150,7 @@ async def _process_ticket_async(ticket_id: str) -> None:
                     "specialist_flagged": decision.specialist_flagged,
                     "fast_path_eligible": decision.fast_path_eligible,
                     "decision_reason": decision.reason,
+                    "specialist_reviewed": state.get("specialist_reviewed", False),
                 },
                 actor="system",
             )

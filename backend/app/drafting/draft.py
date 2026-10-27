@@ -48,6 +48,7 @@ def draft(
     urgency_score: float,
     category_confidence: float,
     customer_history: str = "",
+    force_strong_tier: bool = False,
 ) -> DraftResult:
     if not chunks:
         # Never fabricate an answer when retrieval found nothing relevant
@@ -62,7 +63,7 @@ def draft(
     confidence = _estimate_confidence(chunks, category_confidence)
 
     try:
-        if urgency_score < settings.cheap_tier_urgency_threshold:
+        if not force_strong_tier and urgency_score < settings.cheap_tier_urgency_threshold:
             result = _draft_cheap_tier(ticket_text, chunks)
             return DraftResult(
                 draft_text=result.reply,

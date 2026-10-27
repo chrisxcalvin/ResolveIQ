@@ -1,0 +1,76 @@
+name: Backend CI
+
+# Runs the backend test suite on every push/PR to main. Spins up Postgres
+# (pgvector-enabled, since several models use a real `vector` column — see
+# tests/conftest.py) and Redis as GitHub-hosted service containers, matching
+# local dev's native-Postgres/Redis setup rather than introducing Docker
+# into the test path itself.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: resolveiq
+          POSTGRES_PASSWORD: resolveiq_dev_password
+          POSTGRES_DB: resolveiq_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U resolveiq -d resolveiq_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Enable pgvector extension
+        run: |
+          sudo apt-get update && sudo apt-get install -y postgresql-client
+          PGPASSWORD=resolveiq_dev_password psql -h localhost -U resolveiq -d resolveiq_test \
+            -c "CREATE EXTENSION IF NOT EXISTS vector"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+          cache-dependency-glob: "backend/uv.lock"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        working-directory: backend
+        run: uv sync
+
+      - name: Run tests
+        working-directory: backend
+        # No env overrides needed: every app/core/config.py setting has a
+        # safe default (database_url/redis_url already point at
+        # localhost:5432/6379, matching the service containers above;
+        # groq_api_key/hf_api_key default to None and nothing in the suite
+        # makes a real model call — see tests/test_drafting.py,
+        # test_pipeline_specialist_branch.py).
+        run: uv run pytest -v

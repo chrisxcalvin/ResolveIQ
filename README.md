@@ -31,13 +31,14 @@ flowchart LR
         D --> E[customer_context]
         E --> F[draft]
         F --> G[decide]
+        G -->|specialist_flagged| H[specialist_review: wider retrieval + forced strong tier]
     end
 
     Ticket[POST /tickets] -->|status=new, enqueue| Pipeline
     Pipeline --> DB[(Postgres + pgvector)]
     F -->|urgency < threshold| Cheap[Cheap tier: LoRA-fine-tuned Qwen2.5-0.5B]
     F -->|urgency >= threshold| Strong[Strong tier: Groq-hosted gpt-oss-120b]
-    Agent[Human agent: approve / edit / escalate] --> DB
+    Agent[Human agent: claim, then approve / edit / escalate] --> DB
     Agent -->|edit| Correction[correction_signals] --> Boost[retrieval_boost on kb_chunks] --> D
 ```
 
@@ -58,6 +59,13 @@ fine-tuned small model and a stronger hosted one), and a decision agent
    synthetic age/category/urgency/queue-depth rule reorders the queue.
 4. **Agent coaching insights** — edit-distance, resolution time, and
    escalation rate aggregated per agent; pure reporting, no new backend logic.
+5. **Ticket claim/assignment** — an agent claims a ticket (or is
+   auto-claimed on resolve); a second agent gets a real 409, not a silent
+   double-resolution, if they try to act on someone else's claimed ticket.
+6. **Specialist-review branch** — a specialist-flagged ticket (low draft
+   confidence, or a high-urgency dispute) gets a genuinely distinct second
+   pass — wider retrieval, forced strong-tier drafting — before an agent
+   ever sees it, not just a flag on the same draft a routine ticket got.
 
 ## Production LLM techniques
 
@@ -76,8 +84,8 @@ fine-tuned small model and a stronger hosted one), and a decision agent
 ## Tech stack
 
 FastAPI (async) · PostgreSQL + pgvector · LangGraph · Celery + Redis ·
-Next.js · JWT auth (access + rotated refresh) · Langfuse · RAGAS · Docker
-Compose. Rationale for each choice is in
+Next.js · JWT auth (access + rotated refresh) · Langfuse · RAGAS · GitHub
+Actions CI. Rationale for each choice is in
 [02_TRD.md](02_TRD.md#1-tech-stack-and-why).
 
 ## Quick start

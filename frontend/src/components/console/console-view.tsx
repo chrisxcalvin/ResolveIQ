@@ -6,10 +6,13 @@ import { useRouter } from "next/navigation";
 import { Inbox } from "lucide-react";
 import {
   ApiError,
+  claimTicket,
   getAccessToken,
+  getCurrentUserId,
   getTicket,
   listTickets,
   resolveTicket,
+  unclaimTicket,
   type ResolveAction,
   type TicketDetail,
   type TicketListItem,
@@ -216,6 +219,11 @@ function QueuePanel({
                     <span className="font-data text-xs text-muted-foreground">{t.id.slice(0, 8)}</span>
                     <span className="text-xs text-muted-foreground capitalize">{t.status}</span>
                   </div>
+                  {t.assigned_agent_email && (
+                    <div className="text-xs text-muted-foreground">
+                      Claimed by <span className="font-medium">{t.assigned_agent_email}</span>
+                    </div>
+                  )}
                 </Link>
               </li>
             );
@@ -239,6 +247,8 @@ function TicketAndContext({ ticketId, tickets }: { ticketId?: string; tickets: T
   const [submitting, setSubmitting] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [outcome, setOutcome] = useState<ResolveAction | null>(null);
+  const [claiming, setClaiming] = useState(false);
+  const currentUserId = useMemo(() => getCurrentUserId(), []);
 
   function load(id: string) {
     getTicket(id)
@@ -309,6 +319,26 @@ function TicketAndContext({ ticketId, tickets }: { ticketId?: string; tickets: T
     }
   }
 
+  async function toggleClaim() {
+    setActionError(null);
+    setClaiming(true);
+    try {
+      if (ticket!.assigned_agent_id) {
+        await unclaimTicket(ticketId!);
+      } else {
+        await claimTicket(ticketId!);
+      }
+      load(ticketId!);
+    } catch (err) {
+      setActionError(err instanceof ApiError ? err.message : "Could not update claim, please try again");
+    } finally {
+      setClaiming(false);
+    }
+  }
+
+  const claimedByMe = ticket.assigned_agent_id !== null && ticket.assigned_agent_id === currentUserId;
+  const claimedByOther = ticket.assigned_agent_id !== null && ticket.assigned_agent_id !== currentUserId;
+
   return (
     <>
       <div className="flex min-w-0 flex-1 flex-col border-b border-border md:border-b-0 md:border-r">
@@ -323,9 +353,24 @@ function TicketAndContext({ ticketId, tickets }: { ticketId?: string; tickets: T
               {ticket.channel}
             </Badge>
           </div>
-          <Badge variant="outline" className="rounded-sm capitalize">
-            {ticket.status}
-          </Badge>
+          <div className="flex items-center gap-2">
+            {ticket.assigned_agent_email && (
+              <Badge
+                variant="outline"
+                className={cn("rounded-sm", claimedByMe ? "border-primary text-primary" : "text-muted-foreground")}
+              >
+                {claimedByMe ? "Claimed by you" : `Claimed by ${ticket.assigned_agent_email}`}
+              </Badge>
+            )}
+            {resolvable && !claimedByOther && (
+              <Button variant="outline" size="sm" onClick={toggleClaim} disabled={claiming}>
+                {claimedByMe ? "Unclaim" : "Claim"}
+              </Button>
+            )}
+            <Badge variant="outline" className="rounded-sm capitalize">
+              {ticket.status}
+            </Badge>
+          </div>
         </div>
 
         {/* Pipeline trace */}
@@ -338,6 +383,11 @@ function TicketAndContext({ ticketId, tickets }: { ticketId?: string; tickets: T
             <Badge className="shrink-0 rounded-sm border-transparent bg-signal-high/20 text-signal-high">
               Needs specialist review
             </Badge>
+            {ticket.specialist_reviewed && (
+              <Badge variant="outline" className="shrink-0 rounded-sm">
+                Auto re-drafted, wider context
+              </Badge>
+            )}
             <span className="text-muted-foreground">
               {ticket.decision_reason ?? "The system flagged this draft as needing careful review."}
             </span>
@@ -418,7 +468,13 @@ function TicketAndContext({ ticketId, tickets }: { ticketId?: string; tickets: T
             </div>
           )}
 
-          {resolvable && ticket.draft && (
+          {resolvable && claimedByOther && (
+            <p className="mt-5 text-sm text-muted-foreground">
+              Claimed by {ticket.assigned_agent_email} — claim it yourself to act on it.
+            </p>
+          )}
+
+          {resolvable && ticket.draft && !claimedByOther && (
             <div className="mt-5 flex flex-wrap gap-2">
               {mode === "view" && (
                 <>

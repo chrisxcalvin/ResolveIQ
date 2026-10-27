@@ -22,6 +22,7 @@ from app.retrieval.retrieve import (
     adjust_retrieval_boost,
 )
 from app.schemas.ticket import (
+    ClaimResponse,
     CustomerHistoryItem,
     DraftOut,
     ResolveRequest,
@@ -93,8 +94,9 @@ async def list_tickets(
     # unavailable) fall back to urgency — the App Flow's documented
     # fallback behavior for when breach-risk scoring is unavailable.
     stmt = (
-        select(Ticket, Customer.masked_identifier)
+        select(Ticket, Customer.masked_identifier, User.email)
         .join(Customer, Ticket.customer_id == Customer.id)
+        .outerjoin(User, Ticket.assigned_agent_id == User.id)
         .order_by(
             Ticket.breach_risk_score.desc().nulls_last(),
             Ticket.urgency_score.desc().nulls_last(),
@@ -112,8 +114,10 @@ async def list_tickets(
             breach_risk_score=t.breach_risk_score,
             status=t.status,
             created_at=t.created_at,
+            assigned_agent_id=t.assigned_agent_id,
+            assigned_agent_email=agent_email,
         )
-        for t, masked_id in rows
+        for t, masked_id, agent_email in rows
     ]
 
 
@@ -125,14 +129,15 @@ async def get_ticket(
 ) -> TicketDetail:
     row = (
         await db.execute(
-            select(Ticket, Customer.masked_identifier)
+            select(Ticket, Customer.masked_identifier, User.email)
             .join(Customer, Ticket.customer_id == Customer.id)
+            .outerjoin(User, Ticket.assigned_agent_id == User.id)
             .where(Ticket.id == ticket_id)
         )
     ).first()
     if row is None:
         raise HTTPException(status_code=404, detail="Ticket not found")
-    ticket, masked_id = row
+    ticket, masked_id, assigned_agent_email = row
 
     latest_draft = (
         (
@@ -199,11 +204,13 @@ async def get_ticket(
     decision_reason = None
     category_confidence = None
     avg_retrieval_similarity = None
+    specialist_reviewed = False
     if latest_drafted_event is not None:
         specialist_flagged = bool(latest_drafted_event.detail.get("specialist_flagged", False))
         decision_reason = latest_drafted_event.detail.get("decision_reason")
         category_confidence = latest_drafted_event.detail.get("category_confidence")
         avg_retrieval_similarity = latest_drafted_event.detail.get("avg_retrieval_similarity")
+        specialist_reviewed = bool(latest_drafted_event.detail.get("specialist_reviewed", False))
 
     return TicketDetail(
         id=ticket.id,
@@ -228,7 +235,64 @@ async def get_ticket(
         decision_reason=decision_reason,
         category_confidence=category_confidence,
         avg_retrieval_similarity=avg_retrieval_similarity,
+        specialist_reviewed=specialist_reviewed,
+        assigned_agent_id=ticket.assigned_agent_id,
+        assigned_agent_email=assigned_agent_email,
     )
+
+
+@router.post("/{ticket_id}/claim", response_model=ClaimResponse)
+async def claim_ticket(
+    ticket_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_role("agent", "admin")),
+) -> ClaimResponse:
+    # Row-locked for the same reason as resolve_ticket below: two agents
+    # opening the same ticket at once must not both succeed in claiming it.
+    ticket = await db.get(Ticket, ticket_id, with_for_update=True)
+    if ticket is None:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+
+    if ticket.assigned_agent_id is not None and ticket.assigned_agent_id != user.id:
+        raise HTTPException(status_code=409, detail="Ticket is already claimed by another agent")
+
+    ticket.assigned_agent_id = user.id
+    db.add(
+        AuditLog(
+            ticket_id=ticket.id,
+            event_type="claimed",
+            detail={"agent_email": user.email},
+            actor=str(user.id),
+        )
+    )
+    await db.commit()
+    return ClaimResponse(id=ticket.id, assigned_agent_id=user.id, assigned_agent_email=user.email)
+
+
+@router.post("/{ticket_id}/unclaim", response_model=TicketOut)
+async def unclaim_ticket(
+    ticket_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_role("agent", "admin")),
+) -> Ticket:
+    ticket = await db.get(Ticket, ticket_id, with_for_update=True)
+    if ticket is None:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+
+    if ticket.assigned_agent_id is not None and ticket.assigned_agent_id != user.id:
+        raise HTTPException(status_code=409, detail="Ticket is claimed by another agent")
+
+    ticket.assigned_agent_id = None
+    db.add(
+        AuditLog(
+            ticket_id=ticket.id,
+            event_type="unclaimed",
+            detail={"agent_email": user.email},
+            actor=str(user.id),
+        )
+    )
+    await db.commit()
+    return ticket
 
 
 @router.post("/{ticket_id}/resolve", response_model=ResolveResponse)
@@ -252,6 +316,19 @@ async def resolve_ticket(
             status_code=409,
             detail=f"Ticket is already {ticket.status} — cannot resolve it again",
         )
+
+    # Claim/assignment (Phase 9): a ticket already claimed by a different
+    # agent can't be resolved out from under them — blocks the "two agents
+    # work the same ticket blind" race the schema's assigned_agent_id column
+    # existed for but nothing ever enforced. An unclaimed ticket is silently
+    # self-claimed by whoever resolves it first, under the same row lock, so
+    # the common single-step "open it and approve" flow needs no separate
+    # claim call.
+    if ticket.assigned_agent_id is not None and ticket.assigned_agent_id != user.id:
+        raise HTTPException(
+            status_code=409, detail="Ticket is claimed by another agent — cannot resolve it"
+        )
+    ticket.assigned_agent_id = user.id
 
     draft = (
         (
