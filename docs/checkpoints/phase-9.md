@@ -56,13 +56,23 @@ every chunk of the new account-closure article over the existing lockout
 articles. The fallback produces embeddings good enough to retrieve
 correctly, not just embeddings that merely exist.
 
-**What's still true:** the deployed Render worker still prefers the
-hosted API first specifically to avoid loading `sentence-transformers`/
-torch into its constrained memory on the common path — this fallback is
-insurance against the hosted path being unavailable, not a decision to
-always run locally. If HF's quota resets, the system goes back to
-costing nothing extra; if it doesn't, every call pays the local-model
-cost once per process and keeps working either way.
+**Correction, written after first deploying this fix: the local fallback
+does NOT help the deployed Render worker, and the paragraph that used to
+be here overstated that it did.** `requirements-deploy.txt` deliberately
+excludes `sentence-transformers` (same reason it excludes `torch`/
+`unsloth` — the worker's 512MB budget, see `docs/checkpoints/phase-5.md`),
+so on Render the fallback's `from sentence_transformers import
+SentenceTransformer` simply isn't importable. Caught by checking the
+actual deploy config right after pushing, rather than assuming the fix
+reached everywhere it was written to reach — `_embed_locally` now raises a
+clear, labeled `RuntimeError` in that case instead of letting an
+`ImportError` surface confusingly from inside an `except` block, but that
+is a better *failure message*, not a fix for the deployed worker's
+retrieval. **The honest current state:** local dev (and any future
+deployment with room for `sentence-transformers`/torch) is fully covered
+by the fallback and verified above; the live Render worker is not, and
+still depends on HF's hosted quota resetting or being topped up. Confirmed
+the quota was still exhausted as of this correction, not assumed stale.
 
 ## 1. Ticket claim/assignment
 
