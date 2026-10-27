@@ -1,0 +1,254 @@
+{
+  "measured_at": "2026-10-20T14:45:10.008576+00:00",
+  "n_requested": 30,
+  "per_ticket": [
+    {
+      "ticket_id": "7c1fe186-7b3c-47be-a502-21eeed2c3524",
+      "category_hint": "account_lock",
+      "seconds": 14.463179,
+      "tier": "strong",
+      "specialist_reviewed": false,
+      "timed_out": false
+    },
+    {
+      "ticket_id": "ce02ed43-7769-49e1-aee4-95d468eba2db",
+      "category_hint": "dispute",
+      "seconds": 26.459464,
+      "tier": "strong",
+      "specialist_reviewed": true,
+      "timed_out": false
+    },
+    {
+      "ticket_id": "172067ef-eedb-4af7-9ff7-bc45914c0769",
+      "category_hint": "general_query",
+      "seconds": 21.012125,
+      "tier": "strong",
+      "specialist_reviewed": false,
+      "timed_out": false
+    },
+    {
+      "ticket_id": "f6b0e9e7-fa61-4e66-be79-203695b2de44",
+      "category_hint": "payment_failure",
+      "seconds": 21.725133,
+      "tier": "strong",
+      "specialist_reviewed": true,
+      "timed_out": false
+    },
+    {
+      "ticket_id": "03a1185e-8933-4ffb-8b26-beae21887cef",
+      "category_hint": "refund_delay",
+      "seconds": 18.812841,
+      "tier": "strong",
+      "specialist_reviewed": false,
+      "timed_out": false
+    },
+    {
+      "ticket_id": "eb9dff97-b1c9-4756-8ea5-c6f30c1e44ce",
+      "category_hint": "account_lock",
+      "seconds": 16.354905,
+      "tier": "strong",
+      "specialist_reviewed": false,
+      "timed_out": false
+    },
+    {
+      "ticket_id": "cffd130f-d8f2-43a1-83ff-1101276c7f19",
+      "category_hint": "dispute",
+      "seconds": 16.398239,
+      "tier": "strong",
+      "specialist_reviewed": false,
+      "timed_out": false
+    },
+    {
+      "ticket_id": "99ea9602-32b7-46b1-8502-b16666e97c25",
+      "category_hint": "general_query",
+      "seconds": 22.540067,
+      "tier": "strong",
+      "specialist_reviewed": true,
+      "timed_out": false
+    },
+    {
+      "ticket_id": "7865a65f-87b1-4542-9150-0a4f40eecfd5",
+      "category_hint": "payment_failure",
+      "seconds": 25.047996,
+      "tier": "strong",
+      "specialist_reviewed": false,
+      "timed_out": false
+    },
+    {
+      "ticket_id": "6e456312-d1d3-4512-a105-6d7a1c0dc790",
+      "category_hint": "refund_delay",
+      "seconds": 18.636514,
+      "tier": "strong",
+      "specialist_reviewed": false,
+      "timed_out": false
+    },
+    {
+      "ticket_id": "690d4a8a-7217-40f3-a6a6-1ebc24ced7ee",
+      "category_hint": "account_lock",
+      "seconds": 16.234192,
+      "tier": "strong",
+      "specialist_reviewed": false,
+      "timed_out": false
+    },
+    {
+      "ticket_id": "45ee7889-c540-4e06-a68e-76df6236657f",
+      "category_hint": "dispute",
+      "seconds": 16.295229,
+      "tier": "strong",
+      "specialist_reviewed": false,
+      "timed_out": false
+    },
+    {
+      "ticket_id": "0a5c090c-6304-46e5-9cac-85023264d00d",
+      "category_hint": "general_query",
+      "seconds": 16.299553,
+      "tier": "strong",
+      "specialist_reviewed": false,
+      "timed_out": false
+    },
+    {
+      "ticket_id": "60e9db9b-a010-4ca2-8626-e8919c26b164",
+      "category_hint": "payment_failure",
+      "seconds": 18.882237,
+      "tier": "strong",
+      "specialist_reviewed": true,
+      "timed_out": false
+    },
+    {
+      "ticket_id": "fb9cd22a-f1d0-453b-b3bd-4d10078922c4",
+      "category_hint": "refund_delay",
+      "seconds": 24.330686,
+      "tier": "strong",
+      "specialist_reviewed": true,
+      "timed_out": false
+    },
+    {
+      "ticket_id": "9f76a29d-715a-47e3-b520-f2c081588bf8",
+      "category_hint": "account_lock",
+      "seconds": 19.224035,
+      "tier": "strong",
+      "specialist_reviewed": false,
+      "timed_out": false
+    },
+    {
+      "ticket_id": "e99fa155-b4a2-4e28-954f-3a3b23186fad",
+      "category_hint": "dispute",
+      "seconds": 17.198073,
+      "tier": "strong",
+      "specialist_reviewed": false,
+      "timed_out": false
+    },
+    {
+      "ticket_id": "2c6a9f33-6363-4a26-93fe-c12927e85876",
+      "category_hint": "general_query",
+      "seconds": 21.539907,
+      "tier": "strong",
+      "specialist_reviewed": true,
+      "timed_out": false
+    },
+    {
+      "ticket_id": "96d1406f-3ec2-4992-adb8-1adbe8f844f6",
+      "category_hint": "payment_failure",
+      "seconds": 18.999422,
+      "tier": "strong",
+      "specialist_reviewed": false,
+      "timed_out": false
+    },
+    {
+      "ticket_id": "c02aa899-01b2-4a8a-bd9e-356406375ddb",
+      "category_hint": "refund_delay",
+      "seconds": 20.709276,
+      "tier": "strong",
+      "specialist_reviewed": false,
+      "timed_out": false
+    },
+    {
+      "ticket_id": "5838c364-f471-4077-99a6-3172c90952b1",
+      "category_hint": "account_lock",
+      "seconds": 19.172319,
+      "tier": "strong",
+      "specialist_reviewed": false,
+      "timed_out": false
+    },
+    {
+      "ticket_id": "de53ea86-bf29-4440-9987-2b4efc3647ff",
+      "category_hint": "dispute",
+      "seconds": 14.106478,
+      "tier": "strong",
+      "specialist_reviewed": false,
+      "timed_out": false
+    },
+    {
+      "ticket_id": "72c292d3-a518-42c8-afa1-548cb7547287",
+      "category_hint": "general_query",
+      "seconds": 16.495629,
+      "tier": "strong",
+      "specialist_reviewed": false,
+      "timed_out": false
+    },
+    {
+      "ticket_id": "6b86cce2-b79a-482e-b88c-c7e2ff6d6f8e",
+      "category_hint": "payment_failure",
+      "seconds": 16.818563,
+      "tier": "strong",
+      "specialist_reviewed": false,
+      "timed_out": false
+    },
+    {
+      "ticket_id": "43b57ac1-9de4-4f3c-9a37-ee015d52bf68",
+      "category_hint": "refund_delay",
+      "seconds": 21.394629,
+      "tier": "strong",
+      "specialist_reviewed": true,
+      "timed_out": false
+    },
+    {
+      "ticket_id": "9e726ed5-79d0-43bf-b34a-bb2557fa059d",
+      "category_hint": "account_lock",
+      "seconds": 18.567501,
+      "tier": "strong",
+      "specialist_reviewed": false,
+      "timed_out": false
+    },
+    {
+      "ticket_id": "d9f8ce25-ab8b-4c66-950e-b0cefe473c01",
+      "category_hint": "dispute",
+      "seconds": 16.37217,
+      "tier": "strong",
+      "specialist_reviewed": false,
+      "timed_out": false
+    },
+    {
+      "ticket_id": "d2b273c3-bbb7-4b33-bcf7-cbf17c02b3ef",
+      "category_hint": "general_query",
+      "seconds": 20.889638,
+      "tier": "strong",
+      "specialist_reviewed": false,
+      "timed_out": false
+    },
+    {
+      "ticket_id": "3d086320-260a-4888-a617-cccdfb729fab",
+      "category_hint": "payment_failure",
+      "seconds": 23.78493,
+      "tier": "strong",
+      "specialist_reviewed": false,
+      "timed_out": false
+    },
+    {
+      "ticket_id": "1cb1147f-e511-48c0-8d13-f2e62f53ac5d",
+      "category_hint": "refund_delay",
+      "seconds": 17.425821,
+      "tier": "strong",
+      "specialist_reviewed": false,
+      "timed_out": false
+    }
+  ],
+  "summary": {
+    "n_completed": 30,
+    "n_timed_out": 0,
+    "median_seconds": 18.85,
+    "p95_seconds": 25.05,
+    "min_seconds": 14.11,
+    "max_seconds": 26.46
+  }
+}
