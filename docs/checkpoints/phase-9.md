@@ -31,48 +31,55 @@ as a pattern, not a one-off: hosted free tiers for anything embedding- or
 inference-shaped are a liability for a long-running demo, not a solved
 problem.
 
-**The fix:** `embed_texts()` now tries the hosted API first (keeping the
-deployed worker's memory footprint small on the common path) and, on
-*any* failure — a 402, a different HTTP error, or a network error,
-covering both this specific quota exhaustion and this machine's own
-documented intermittent network blips — falls back to computing the exact
-same model (`sentence-transformers/all-MiniLM-L6-v2`) locally via the
-`sentence-transformers` package, lazily imported and loaded so that cost
-is only ever paid on a process that actually hits the fallback. Because
-it's the identical model, the embedding space is unchanged regardless of
-which path served a given call, so `kb_chunks`' existing vectors stay
-comparable to anything computed by the fallback.
+**The fix, attempt 1 (deployed, then found insufficient):** `embed_texts()`
+tries the hosted API first and, on any failure, falls back to computing
+the exact same model locally via the `sentence-transformers` package.
+Verified correct against the real database — re-ran `uv run python -m
+app.kb.embed`, which embedded all 25 KB documents (77 chunks) entirely via
+the fallback, and real retrieval queries through `app.retrieval.retrieve`
+confirmed the resulting vectors still rank correctly (*"my refund is
+taking too long"* top-matched the refund timeline articles at 0.61/0.60
+similarity; *"I want to close my account"* top-matched every chunk of the
+new account-closure article). But this was deployed before checking
+whether it could actually *run* in production, and it couldn't:
+`requirements-deploy.txt` deliberately excludes `sentence-transformers`
+(same 512MB-worker reason it excludes `torch`/`unsloth` — see
+`docs/checkpoints/phase-5.md`), so on Render the fallback's own import
+wasn't available. Caught by checking the real deploy config right after
+pushing, not assumed to have worked everywhere it was written to work.
 
-**Verified, not assumed:** re-ran `uv run python -m app.kb.embed` against
-the real database — it embedded all 25 KB documents (77 chunks, the
-original 20 plus the 5 added below) entirely via the local fallback,
-logging the 402 and degrading cleanly every time. Then ran real retrieval
-queries through `app.retrieval.retrieve` against those locally-computed
-vectors: *"my refund is taking too long"* correctly top-matched the refund
-timeline/delay articles (0.61, 0.60 similarity) with the new lost-or-
-stolen-refund article correctly ranked lower (0.50) as a related but
-distinct scenario; *"I want to close my account"* correctly top-matched
-every chunk of the new account-closure article over the existing lockout
-articles. The fallback produces embeddings good enough to retrieve
-correctly, not just embeddings that merely exist.
+**The fix, attempt 2 (what's actually deployed now): the same model's
+published ONNX export, run via `onnxruntime` + a raw `tokenizers`
+tokenizer — no torch, no `sentence-transformers`.** `onnxruntime` +
+`tokenizers` + `huggingface-hub` together are ~30MB of wheels, and the
+model file itself is a ~90MB `.onnx` baked into the Docker image at build
+time (`Dockerfile.deploy`), versus torch's own ~385MB runtime footprint —
+light enough to actually fit the worker's budget instead of just fitting
+it in theory.
 
-**Correction, written after first deploying this fix: the local fallback
-does NOT help the deployed Render worker, and the paragraph that used to
-be here overstated that it did.** `requirements-deploy.txt` deliberately
-excludes `sentence-transformers` (same reason it excludes `torch`/
-`unsloth` — the worker's 512MB budget, see `docs/checkpoints/phase-5.md`),
-so on Render the fallback's `from sentence_transformers import
-SentenceTransformer` simply isn't importable. Caught by checking the
-actual deploy config right after pushing, rather than assuming the fix
-reached everywhere it was written to reach — `_embed_locally` now raises a
-clear, labeled `RuntimeError` in that case instead of letting an
-`ImportError` surface confusingly from inside an `except` block, but that
-is a better *failure message*, not a fix for the deployed worker's
-retrieval. **The honest current state:** local dev (and any future
-deployment with room for `sentence-transformers`/torch) is fully covered
-by the fallback and verified above; the live Render worker is not, and
-still depends on HF's hosted quota resetting or being topped up. Confirmed
-the quota was still exhausted as of this correction, not assumed stale.
+**Verified equivalent, not assumed equivalent because "it's the same
+model":** before trusting this, ran both implementations side by side on
+three real support-ticket-style queries and compared the resulting
+vectors directly — cosine similarity **1.000000** between the ONNX output
+and the `sentence-transformers` reference for every one of them, not an
+approximate match. Re-ran the KB embed and the retrieval sanity queries
+above through the new ONNX path afterward and got the same rankings
+again. Also exercised the "baked into the image" code path specifically
+(not just the Hub-download path available in local dev) by placing the
+two files where `Dockerfile.deploy` puts them and confirming
+`embed_texts()` picks them up and returns correctly-shaped vectors — the
+part of this fix that actually reaches the deployed worker, checked
+directly rather than inferred from the Dockerfile reading correctly.
+
+**Honest residual gap:** the Docker build itself (the actual `docker
+build` of `Dockerfile.deploy`, with the real `RUN` step downloading and
+baking the two files) has not been run on this machine — Docker is
+unusable here (a standing constraint on this project, unrelated to this
+fix) — so the *build step's* correctness is reasoned through and each
+piece tested in isolation (the download-and-copy Python snippet, the
+baked-file code path, the ONNX-vs-reference equivalence) rather than
+verified end-to-end as one real build. Render's own build log on the next
+deploy is the first real end-to-end confirmation.
 
 ## 1. Ticket claim/assignment
 

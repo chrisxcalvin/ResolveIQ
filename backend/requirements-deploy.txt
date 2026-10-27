@@ -5,15 +5,14 @@
 #     CHEAP_TIER_URGENCY_THRESHOLD=0 (every ticket routes to the
 #     Groq-hosted strong tier in this deployment).
 #   - sentence-transformers: embeddings are computed via Hugging Face's
-#     hosted API (app/kb/embeddings.py), not a local model — this was the
-#     actual fix for the Celery worker exceeding 512MB in this container
-#     (torch's import alone cost ~385MB at runtime; see
-#     docs/checkpoints/phase-5.md). Phase 9 added a local-compute fallback
-#     for when that hosted API is unavailable, but it's deliberately NOT
-#     usable here for the same memory reason — see the embeddings module's
-#     own docstring and docs/checkpoints/phase-9.md for the honest gap
-#     this leaves (the fallback only helps environments that can afford
-#     sentence-transformers/torch, which this deployment still can't).
+#     hosted API by default (app/kb/embeddings.py), not a local
+#     sentence-transformers/torch model — torch's import alone cost
+#     ~385MB at runtime in this container (see docs/checkpoints/phase-5.md),
+#     which is why that package is excluded here. onnxruntime/tokenizers/
+#     huggingface-hub ARE included below (~30MB of wheels) — they run the
+#     SAME model's own published ONNX export as a local fallback for when
+#     the hosted API is unavailable (it was, for weeks — see
+#     docs/checkpoints/phase-9.md), without paying torch's memory cost.
 #   - ragas, langchain-community: eval-only (app/eval/ragas_eval.py),
 #     confirmed unreferenced anywhere in the serving path.
 #
@@ -47,3 +46,6 @@ slowapi>=0.1.10
 langfuse>=4.14.3
 rapidfuzz>=3.14.5
 httpx>=0.27
+onnxruntime>=1.20
+tokenizers>=0.21
+huggingface-hub>=0.27

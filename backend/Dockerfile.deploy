@@ -5,7 +5,11 @@
 # runtime, already over the 512MB free-tier limit by itself, so combining
 # it with the API was never going to fit either way — splitting them plus
 # switching embeddings off local torch (see app/kb/embeddings.py) is what
-# actually fixed it (worker now runs at ~287MB).
+# actually fixed it (worker now runs at ~287MB). Phase 9 added an ONNX
+# Runtime-based local embeddings fallback (~30MB of wheels + a baked-in
+# ~90MB model file, no torch) for when Hugging Face's hosted embeddings
+# API is unavailable — chosen specifically because it fits this same
+# budget; see app/kb/embeddings.py's module docstring.
 #
 # Deliberately NOT the dev Dockerfile's `uv sync` against pyproject.toml:
 # that installs Unsloth + a CUDA-flavored torch build (10-20GB) for the
@@ -38,6 +42,22 @@ COPY backend/app ./app
 COPY backend/start-render.sh ./start-render.sh
 COPY backend/start-worker.sh ./start-worker.sh
 RUN chmod +x ./start-render.sh ./start-worker.sh
+
+# Bakes the ONNX embeddings fallback's model + tokenizer into the image at
+# build time (see app/kb/embeddings.py's module docstring for why this
+# exists and why it's ~30MB of wheels instead of torch's ~385MB). Run
+# after `COPY backend/app ./app` so this only adds the two extra files
+# rather than depending on directory-merge behavior for an app/ tree that
+# doesn't exist yet. Baking it in means the fallback has no runtime
+# network dependency on HF's file CDN either — only the hosted Inference
+# Providers call does, and that one already degrades cleanly on failure.
+RUN mkdir -p app/kb/artifacts/onnx_embedding_model && \
+    python -c "\
+from huggingface_hub import hf_hub_download; \
+import shutil; \
+repo = 'sentence-transformers/all-MiniLM-L6-v2'; \
+shutil.copy(hf_hub_download(repo, 'onnx/model.onnx'), 'app/kb/artifacts/onnx_embedding_model/model.onnx'); \
+shutil.copy(hf_hub_download(repo, 'tokenizer.json'), 'app/kb/artifacts/onnx_embedding_model/tokenizer.json')"
 
 # Trained artifacts baked into the image — both are tiny (~100KB combined)
 # and already committed to git (see .gitignore's comments on which ML

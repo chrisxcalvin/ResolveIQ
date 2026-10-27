@@ -22,6 +22,11 @@ backend/app/ml/finetune/artifacts/drafting_lora/
 backend/unsloth_compiled_cache/
 backend/app/ml/artifacts/cfpb_complaints.jsonl
 
+# ONNX embeddings fallback model (app/kb/embeddings.py) — ~90MB, downloaded
+# on demand locally and baked into the image at build time for deploy
+# (see Dockerfile.deploy), never committed.
+backend/app/kb/artifacts/onnx_embedding_model/
+
 # Generated status/report docs — local only, not for publishing
 # (the status report documents currently-unfixed security/race gaps)
 /ResolveIQ_Project_Documentation.docx

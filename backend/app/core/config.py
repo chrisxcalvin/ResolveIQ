@@ -26,8 +26,12 @@ class Settings(BaseSettings):
     # worker's memory, which alone exceeded a 512MB deployment container
     # even before the API process shared it (see
     # docs/checkpoints/phase-5.md). Read-scope token from
-    # huggingface.co/settings/tokens — verified working with no billing
-    # required, unlike the Gemini API this briefly used instead.
+    # huggingface.co/settings/tokens. Its free Inference Providers
+    # allowance ran out in practice (confirmed, not assumed — see
+    # docs/checkpoints/phase-9.md), same as the Gemini API this briefly
+    # used before HF; app/kb/embeddings.py falls back to a local,
+    # torch-free ONNX Runtime computation of the same model when this
+    # key's hosted calls fail.
     hf_api_key: str | None = None
 
     # Tracing (optional) — unset in a fresh env, tracing.py no-ops cleanly
