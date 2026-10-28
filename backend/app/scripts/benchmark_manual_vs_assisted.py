@@ -6,8 +6,11 @@ actually sit through.
 For each ticket (reusing the real tickets + real drafts from a prior
 `benchmark_time_to_draft` run, so the pipeline isn't run twice):
   1. Shows ONLY the customer's raw ticket text (no AI draft) and times how
-     long it takes you to write a reply from scratch, as if the AI didn't
-     exist.
+     long it takes you to look up the answer in backend/app/kb/articles/
+     yourself and write a reply from what you find — simulating an agent
+     with no AI draft, NOT an agent with no knowledge base. A real agent
+     without this tool still has the KB; they just don't have a system
+     doing the retrieval and first-draft writing for them.
   2. Then shows the REAL AI draft for that same ticket and times how long
      it takes you to review it — approve as-is, edit it, or reject it
      outright.
@@ -93,11 +96,14 @@ async def run(n: int) -> None:
             if ticket is None or draft is None:
                 continue
 
-            print(f"\n{'=' * 70}\nTicket {i}/{len(ticket_ids)}\n{'=' * 70}")
+            print(f"\n{'=' * 70}\nTicket {i}/{len(ticket_ids)}  (category: {ticket.category})\n{'=' * 70}")
             print(f"\nCustomer message:\n{ticket.raw_text}\n")
 
             manual_text, manual_seconds = _read_multiline(
-                "STEP 1 - MANUAL: write your reply from scratch, as if there were no AI draft."
+                "STEP 1 - MANUAL: this simulates an agent with NO AI draft, not an agent "
+                "with no knowledge base. Open backend/app/kb/articles/ (25 .md files, named "
+                "by category) in another window, search/skim for the relevant article the "
+                "same way a real agent would, then write your reply from what you find there."
             )
 
             print(f"\n(manual step took {manual_seconds:.1f}s)\n")

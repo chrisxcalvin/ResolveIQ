@@ -71,43 +71,30 @@ measures concurrent-ticket behavior or the deployed Render worker's own,
 more memory-constrained performance) and the sample is CFPB complaint
 narratives, not this product's own real customer tickets (none exist yet).
 
-## 2. Manual-vs-assisted: a small, honest, human-timed comparison
+## 2. Manual-vs-assisted: built, deliberately not run
 
-**Method:** `app/scripts/benchmark_manual_vs_assisted.py` reuses the real
-tickets and real AI drafts from benchmark #1 (so the pipeline wasn't run
-twice) and, for each one, times a human two ways: (a) writing a reply from
-scratch with only the raw customer message visible, no AI draft; (b)
-reviewing the real AI draft and approving, editing, or rejecting it.
-Timing is wall-clock, server-side, from when each step is shown to when
-the answer is submitted — not self-reported.
+`app/scripts/benchmark_manual_vs_assisted.py` is a real, working tool for
+this comparison — it reuses the real tickets and real AI drafts from
+benchmark #1 and, for each one, would time a human two ways: (a) looking
+up the answer in `backend/app/kb/articles/` and writing a reply from
+what's found there, simulating an agent without this tool but *with* the
+same knowledge base; (b) reviewing the real AI draft and approving,
+editing, or rejecting it.
 
-**Status: built and smoke-tested, not yet run for real.** This is the one
-piece of this document that requires a human to actually sit down and do
-it — timing yourself can't be substituted or estimated without becoming
-exactly the kind of fabricated number this whole document exists to
-avoid. To run it:
+**This was deliberately not run.** It requires a human to actually sit
+through 20 tickets' worth of manual KB lookups, which is real, tedious
+work that wasn't worth the time cost here — a judgment call, made
+explicitly rather than quietly skipped. Faking this number was never an
+option (that's exactly the kind of fabricated metric this whole document
+exists to avoid), so the honest choice was to not have the number rather
+than invent one. The tool remains available —
+`uv run python -m app.scripts.benchmark_manual_vs_assisted` from
+`backend/` — if this comparison is ever worth the time later.
 
-```bash
-cd backend
-uv run python -m app.scripts.benchmark_manual_vs_assisted
-```
-
-It walks through 20 real tickets (reusing the ones from section 1): shows
-you the customer message only, times how long you take to type a reply
-from scratch, then shows the real AI draft and times how long you take to
-type `APPROVE`, `REJECT`, or an edited version. Multi-line answers end
-with a line containing only `###END###`. It writes
-`backend/app/ml/artifacts/benchmark_manual_vs_assisted.json` and prints a
-summary (manual vs. assisted median time, approved/edited/rejected %)
-when done — that summary replaces this paragraph once it's run.
-
-**What this does and doesn't prove:** this is a small, single-person,
-single-session test on historical complaint data, not a production
-measurement across a real support team with real customers and real
-stakes. A single reviewer's speed and judgment isn't a team's average, and
-historical CFPB narratives aren't this product's own ticket distribution.
-It is real evidence of direction and rough magnitude, not a production
-SLA claim.
+**What this means for the overall evidence:** this project does not claim
+to have measured time savings vs. a human working unassisted. What it
+does claim — real pipeline latency and real retrieval quality, both
+below — stands on its own without that comparison.
 
 ## 3. Retrieval quality: RAGAS non-LLM context precision/recall
 

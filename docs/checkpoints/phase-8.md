@@ -28,20 +28,22 @@ recall 0.639, and this is the *first* time these numbers have been
 captured anywhere in this project's docs, so it's the baseline going
 forward, not a comparison to a prior run.
 
-**Manual-vs-assisted comparison and draft approval-rate: built, not yet
-run.** `app/scripts/benchmark_manual_vs_assisted.py` reuses the real
-tickets/drafts from the time-to-draft run and times a human two ways per
-ticket — writing a reply from scratch, then reviewing/editing/rejecting
-the real AI draft — logging both the timing and the approval
-classification in one pass (the spec's items 2 and 3 are one script, not
-two, since running the same 20 tickets through two separate human-timed
-passes would double the real time cost for no additional honesty). This
-is the one piece of Phase 8 that requires a human to actually sit and do
-it — it was built and smoke-tested for mechanical correctness (no
-crashes, correct data loading, correct APPROVE/REJECT/edit-distance
-handling) but the *real* timed run is the developer's own work, not
-something that can be substituted or faked. Once run, its results slot
-into `BENCHMARKS.md`'s second section.
+**Manual-vs-assisted comparison and draft approval-rate: built,
+deliberately not run.** `app/scripts/benchmark_manual_vs_assisted.py`
+reuses the real tickets/drafts from the time-to-draft run and would time a
+human two ways per ticket — looking the answer up in the KB and writing a
+reply, then reviewing/editing/rejecting the real AI draft — logging both
+the timing and the approval classification in one pass (the spec's items
+2 and 3 are one script, not two, since running the same 20 tickets through
+two separate human-timed passes would double the real time cost for no
+additional honesty). This is the one piece of Phase 8 that requires a
+human to actually sit through 20 real manual KB lookups — a genuinely
+tedious, real time cost — and it was a deliberate call not to spend that
+time: built and smoke-tested for mechanical correctness (no crashes,
+correct data loading, correct APPROVE/REJECT/edit-distance handling), but
+never run for real, and not going to be faked to produce a number that
+would otherwise require fabricating what a human experienced. The tool
+stays available if this comparison is ever worth the time later.
 
 ## Why this order, and why these methods specifically
 
@@ -71,22 +73,23 @@ while fixing/improving something else.
 
 ## The honest answer to "what's your evidence this actually works?"
 
-Three real numbers, each with a stated scope: a 30-ticket real-pipeline
+Two real numbers, each with a stated scope: a 30-ticket real-pipeline
 latency distribution (median 18.85s, p95 25.05s) that also surfaced two
 specific, named findings — the cheap/strong tier split didn't engage the
 cheap tier at all on this real-complaint-text sample, and the Phase 9
 specialist-review branch measurably costs about +23% latency on the
-tickets it fires for; a retrieval-quality score (0.800 precision / 0.639
-recall) against a small, hand-labeled, self-authored eval set; and a
-manual-vs-assisted human comparison that is built and ready but not yet
-run.
+tickets it fires for; and a retrieval-quality score (0.800 precision /
+0.639 recall) against a small, hand-labeled, self-authored eval set. A
+third piece — a manual-vs-assisted human comparison — is built and
+available but was deliberately not run, a time-cost judgment call made
+explicitly rather than hidden.
 
 What none of this proves: that this system saves time or improves
 outcomes for a real support team with real customers at real volume. The
 sample is historical CFPB complaint narratives, not this product's own
 traffic (none exists yet); the eval set was written by the same person
 who wrote the KB it's testing; and the one piece that would most directly
-answer "does this actually help a human go faster" is the one piece that
-still needs a human to sit down and run it. That's a narrower, more
-specific gap than "no benchmarks exist" — which is exactly the point of
-this phase.
+answer "does this actually help a human go faster" was explicitly skipped
+rather than run. The honest answer to "did you measure time savings
+vs. manual work" is no, by choice, not "yes" with an invented number —
+that distinction is the entire point of this phase.
