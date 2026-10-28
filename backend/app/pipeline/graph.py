@@ -1,14 +1,34 @@
 """LangGraph pipeline: redact -> classify -> breach_risk -> retrieve ->
-customer_context -> draft -> decide -> [specialist_review] -> END.
+[out_of_domain | customer_context -> draft] -> decide -> [specialist_review]
+-> END.
 
-Mostly linear, with one real conditional branch (Phase 9): a ticket the
-decision step flags for specialist attention (low confidence, or a
-high-urgency dispute) doesn't just carry that flag into the queue — it
-gets a genuinely distinct second pass first, widening retrieval context
-and forcing the strong-tier model regardless of urgency, before an agent
-ever sees it. A routine ticket skips straight to END. See
-docs/checkpoints/phase-9.md for why this lives in the graph itself rather
-than as a queue-side "needs extra review" filter.
+Two real conditional branches:
+
+1. (Phase 9) A ticket the decision step flags for specialist attention
+   (low confidence, or a high-urgency dispute) doesn't just carry that
+   flag into the queue — it gets a genuinely distinct second pass first,
+   widening retrieval context and forcing the strong-tier model
+   regardless of urgency, before an agent ever sees it. A routine ticket
+   skips straight to END.
+
+2. (Phase 9, added after a live ticket exposed the gap) Input that isn't
+   actually a support question at all — confirmed live with "Give me code
+   for travelling salesman problem" submitted through the agent console —
+   still got forced through classification (into one of 5 categories
+   regardless of fit) and drafting, burning a real LLM call whose JSON
+   response then failed to parse, landing the ticket on "AI draft
+   unavailable" with no explanation and no log line. Retrieval similarity
+   turned out to be the clean signal for this: every real ticket in a
+   30-ticket benchmark batch scored 0.22-0.56, this one scored 0.06 — a
+   mostly-empty KB match is what "not actually related to our domain"
+   looks like, more reliably than the classifier's own confidence (which
+   must still pick one of 5 categories regardless of fit). Below
+   OUT_OF_DOMAIN_SIMILARITY_THRESHOLD, the ticket skips customer_context,
+   draft, and specialist_review entirely — no LLM call, no chance of this
+   exact failure, and no multi-minute wait for an answer that was never
+   going to be a real answer. See docs/checkpoints/phase-9.md for the full
+   incident writeup and the honest caveat on how this threshold was
+   calibrated (one real negative example, not many).
 
 Built fresh per ticket since it closes over that ticket's DB session rather
 than threading it through LangGraph's config mechanism.
@@ -36,12 +56,38 @@ from app.retrieval.retrieve import RetrievedChunk, retrieve
 # the tickets most likely to need it.
 SPECIALIST_REVIEW_TOP_K = 8
 
+# Calibrated against one real example, not a large sample — see this
+# module's docstring. Chosen with real margin on both sides (0.06 observed
+# for the one confirmed off-domain ticket, 0.22 the lowest of 30 real
+# ones), not a tight split between two data points. Revisit if a real
+# legitimate ticket ever gets caught by this.
+OUT_OF_DOMAIN_SIMILARITY_THRESHOLD = 0.15
+
+OUT_OF_DOMAIN_MESSAGE = (
+    "This message doesn't appear to be related to a payment, refund, "
+    "account, or dispute question — flagging for a human to review and "
+    "respond to directly."
+)
+
+
+def route_after_retrieve(state: "PipelineState") -> str:
+    """Module-level (not a closure) for the same reason as
+    route_after_decide below — unit-testable on a bare state dict, see
+    test_graph_routing.py."""
+    chunks = state.get("chunks") or []
+    avg_similarity = sum(c.similarity for c in chunks) / len(chunks) if chunks else 0.0
+    return "out_of_domain" if avg_similarity < OUT_OF_DOMAIN_SIMILARITY_THRESHOLD else "customer_context"
+
 
 def route_after_decide(state: "PipelineState") -> str:
-    """The graph's one real conditional branch point. A module-level function
-    (not a closure inside build_graph) so it's unit-testable on a bare state
-    dict without a DB session or a compiled graph — see test_graph_routing.py.
+    """A module-level function (not a closure inside build_graph) so it's
+    unit-testable on a bare state dict without a DB session or a compiled
+    graph — see test_graph_routing.py.
     """
+    if state.get("out_of_domain"):
+        # Already short-circuited once for this exact reason — a second,
+        # equally-doomed expensive redraft pass would defeat the point.
+        return "end"
     return "specialist_review" if state["decision"].specialist_flagged else "end"
 
 
@@ -61,6 +107,7 @@ class PipelineState(TypedDict, total=False):
     draft_result: DraftResult
     decision: Decision
     specialist_reviewed: bool
+    out_of_domain: bool
 
 
 def build_graph(db: AsyncSession):
@@ -91,6 +138,16 @@ def build_graph(db: AsyncSession):
     async def retrieve_node(state: PipelineState) -> dict:
         chunks = await retrieve(db, state["redacted_text"], category=state["category"], top_k=5)
         return {"chunks": chunks}
+
+    @observe(name="out_of_domain")
+    async def out_of_domain_node(state: PipelineState) -> dict:
+        result = DraftResult(
+            draft_text=OUT_OF_DOMAIN_MESSAGE,
+            source_chunk_ids=[],
+            confidence=0.0,
+            tier="out_of_domain",
+        )
+        return {"draft_result": result, "out_of_domain": True}
 
     @observe(name="customer_context")
     async def customer_context_node(state: PipelineState) -> dict:
@@ -145,6 +202,7 @@ def build_graph(db: AsyncSession):
     graph.add_node("classify", classify_node)
     graph.add_node("breach_risk", breach_risk_node)
     graph.add_node("retrieve", retrieve_node)
+    graph.add_node("out_of_domain", out_of_domain_node)
     graph.add_node("customer_context", customer_context_node)
     graph.add_node("draft", draft_node)
     graph.add_node("decide", decide_node)
@@ -154,7 +212,12 @@ def build_graph(db: AsyncSession):
     graph.add_edge("redact", "classify")
     graph.add_edge("classify", "breach_risk")
     graph.add_edge("breach_risk", "retrieve")
-    graph.add_edge("retrieve", "customer_context")
+    graph.add_conditional_edges(
+        "retrieve",
+        route_after_retrieve,
+        {"out_of_domain": "out_of_domain", "customer_context": "customer_context"},
+    )
+    graph.add_edge("out_of_domain", "decide")
     graph.add_edge("customer_context", "draft")
     graph.add_edge("draft", "decide")
     graph.add_conditional_edges(

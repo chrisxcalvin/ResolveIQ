@@ -148,3 +148,52 @@ async def test_high_confidence_draft_skips_specialist_review_node(
     assert state.get("specialist_reviewed") is None
     assert len(stub_pipeline_steps["draft_calls"]) == 1
     assert stub_pipeline_steps["retrieve_calls"] == [5]
+
+
+@pytest.mark.asyncio
+async def test_low_similarity_retrieval_skips_customer_context_draft_and_specialist_review(
+    db_session, stub_pipeline_steps, monkeypatch
+):
+    """The out-of-domain guardrail (added after a live off-topic ticket --
+    'Give me code for travelling salesman problem' -- burned a real LLM
+    call and landed on an unexplained 'AI draft unavailable'). Low
+    retrieval similarity must skip customer_context, draft, AND
+    specialist_review entirely -- not just avoid the normal draft call
+    and then immediately re-trigger an equally pointless specialist pass.
+    """
+    customer_context_calls: list[bool] = []
+
+    async def _fake_customer_history(db, customer_id, ticket_id):
+        customer_context_calls.append(True)
+        return ""
+
+    monkeypatch.setattr(graph_module, "build_customer_history_summary", _fake_customer_history)
+
+    async def _fake_low_similarity_retrieve(db, query, category=None, top_k=5):
+        stub_pipeline_steps["retrieve_calls"].append(top_k)
+        return [RetrievedChunk(chunk_id="c0", document_title="doc", content="x", similarity=0.06)]
+
+    monkeypatch.setattr(graph_module, "retrieve", _fake_low_similarity_retrieve)
+
+    state = await run_pipeline(
+        db_session,
+        raw_text="Give me code for travelling salesman problem",
+        ticket_id=uuid.uuid4(),
+        customer_id=uuid.uuid4(),
+        created_at=datetime.now(timezone.utc),
+    )
+
+    assert state["out_of_domain"] is True
+    assert state["draft_result"].tier == "out_of_domain"
+    assert state["draft_result"].confidence == 0.0
+    assert state["draft_result"].source_chunk_ids == []
+    assert customer_context_calls == []
+    assert stub_pipeline_steps["draft_calls"] == []
+    assert state.get("specialist_reviewed") is None
+    # retrieve() called exactly once — never a second, equally-doomed
+    # specialist-review retrieval on top of the already-low-similarity one.
+    assert stub_pipeline_steps["retrieve_calls"] == [5]
+    # decide() still runs off the synthetic draft_result (confidence=0.0
+    # naturally flags it for human review — that's correct, it's the
+    # SECOND redraft attempt that's wasted, not human visibility).
+    assert state["decision"].needs_review is True

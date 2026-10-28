@@ -2,6 +2,7 @@
 confidence estimate (not either model's self-report).
 """
 
+import logging
 from dataclasses import dataclass
 
 from tenacity import retry, stop_after_attempt, wait_exponential
@@ -10,6 +11,8 @@ from app.core.config import settings
 from app.drafting.cheap_tier import draft_cheap_tier
 from app.drafting.strong_tier import draft_strong_tier
 from app.retrieval.retrieve import RetrievedChunk
+
+logger = logging.getLogger(__name__)
 
 UNAVAILABLE_MESSAGE = "AI draft unavailable, manual response needed."
 
@@ -21,7 +24,9 @@ class DraftResult:
     draft_text: str
     source_chunk_ids: list[str]
     confidence: float
-    tier: str  # "cheap", "strong", "none", or "unavailable"
+    tier: str  # "cheap", "strong", "none", "unavailable", or "out_of_domain"
+    # (the last is assigned outside this module, by
+    # app/pipeline/graph.py's out_of_domain_node — see its docstring)
 
 
 def _estimate_confidence(chunks: list[RetrievedChunk], category_confidence: float) -> float:
@@ -80,6 +85,12 @@ def draft(
             tier="strong",
         )
     except Exception:
+        # Previously silent — a live ticket landed here with no trace of
+        # why (3 retries exhausted, no log line), discovered only by
+        # reproducing the call by hand after the fact. Always log at
+        # least the exception type/message so a real recurrence is
+        # diagnosable without that kind of archaeology.
+        logger.exception("Drafting failed after retries, tier unavailable")
         return DraftResult(
             draft_text=UNAVAILABLE_MESSAGE,
             source_chunk_ids=[],

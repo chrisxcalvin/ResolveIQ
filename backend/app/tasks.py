@@ -117,9 +117,11 @@ async def _process_ticket_async(ticket_id: str) -> None:
         ticket.category = state["category"]
         ticket.urgency_score = state["urgency_score"]
         ticket.breach_risk_score = state["breach_risk_score"]
-        # "drafted" only when a real draft exists; a fallback/no-context
-        # result stays "classified" so the queue can distinguish the two.
-        # An auto-resolved ticket (below) overrides this to "resolved".
+        # "drafted" only when a real sendable draft exists; a fallback/
+        # no-context/out-of-domain result stays "classified" so the queue
+        # can distinguish "ready to send" from "a human needs to actually
+        # write this one". An auto-resolved ticket (below) overrides this
+        # to "resolved".
         ticket.status = "drafted" if draft_result.tier in ("cheap", "strong") else "classified"
 
         db.add(
