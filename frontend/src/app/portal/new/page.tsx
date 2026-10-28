@@ -25,6 +25,12 @@ const POLL_TIMEOUT_MS = 180_000;
 // Past this with the ticket still untouched, say why instead of leaving a
 // silent spinner that looks like nothing is happening.
 const SLOW_START_MS = 15_000;
+// Same idea, but for the SUBMIT request itself, before a ticket even
+// exists to poll — a cold Render instance can take 30-60s+ just to accept
+// the POST, and without this the button just says "Submitting..." with no
+// explanation, which reads as broken and invites navigating away (which
+// genuinely cancels the in-flight request).
+const SLOW_SUBMIT_MS = 8_000;
 const TERMINAL_STATUSES = ["resolved", "escalated"];
 
 // Deliberately coarser than the agent-facing trace — no confidence
@@ -52,6 +58,7 @@ export default function PortalNewTicketPage() {
   const [watching, setWatching] = useState(false);
   const [timedOut, setTimedOut] = useState(false);
   const [slowStart, setSlowStart] = useState(false);
+  const [slowSubmit, setSlowSubmit] = useState(false);
 
   const timers = useRef<ReturnType<typeof setInterval>[]>([]);
 
@@ -78,8 +85,10 @@ export default function PortalNewTicketPage() {
     setError(null);
     setTimedOut(false);
     setSlowStart(false);
+    setSlowSubmit(false);
     setTicket(null);
     setSubmitting(true);
+    const slowSubmitTimer = setTimeout(() => setSlowSubmit(true), SLOW_SUBMIT_MS);
 
     try {
       const created = await submitPortalTicket({
@@ -111,7 +120,9 @@ export default function PortalNewTicketPage() {
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not submit your request");
     } finally {
+      clearTimeout(slowSubmitTimer);
       setSubmitting(false);
+      setSlowSubmit(false);
     }
   }
 
@@ -168,6 +179,13 @@ export default function PortalNewTicketPage() {
                 className="rounded-sm bg-background text-base"
               />
             </div>
+
+            {submitting && slowSubmit && (
+              <p className="text-sm text-muted-foreground">
+                Still working — our server may be waking up after sitting idle, this can take up
+                to a minute. No need to retry.
+              </p>
+            )}
 
             {error && (
               <p role="alert" className="text-sm text-destructive">

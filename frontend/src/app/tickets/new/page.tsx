@@ -26,11 +26,20 @@ import { PipelineTrace, type TraceStage } from "@/components/pipeline-trace";
 import { cn } from "@/lib/utils";
 
 // The pipeline runs on the Celery worker, so the ticket lands as `new` and
-// becomes `drafted` a few seconds later. Poll until it settles so the demo
-// can watch the transition happen instead of refreshing by hand.
+// moves off it a few seconds later, to "drafted" when there's a real
+// sendable draft or "classified" when there isn't (no relevant KB match,
+// or — Phase 9 — input the out-of-domain guardrail short-circuited before
+// drafting at all). The whole pipeline runs as one atomic task that sets
+// status exactly once at the end, so "not new anymore" always means
+// "finished", never "partway there" — polling for a fixed allowlist of
+// end statuses previously missed "classified" entirely, leaving a
+// perfectly-finished ticket's Pipeline panel stuck on "Processing..."
+// forever and its Open-ticket button permanently disabled.
 const POLL_INTERVAL_MS = 1500;
 const POLL_TIMEOUT_MS = 90_000;
-const TERMINAL_STATUSES = ["drafted", "resolved", "escalated"];
+function isDone(status: string): boolean {
+  return status !== "new";
+}
 
 const SAMPLE_TICKET =
   "My payment failed but I can still see the charge pending on my statement, " +
@@ -135,7 +144,7 @@ export default function NewTicketPage() {
         try {
           const latest = await getTicket(created.id);
           setTicket(latest);
-          if (TERMINAL_STATUSES.includes(latest.status)) {
+          if (isDone(latest.status)) {
             stopPolling();
           } else if (Date.now() - startedAt > POLL_TIMEOUT_MS) {
             setTimedOut(true);
@@ -155,7 +164,13 @@ export default function NewTicketPage() {
     }
   }
 
-  const done = ticket !== null && TERMINAL_STATUSES.includes(ticket.status);
+  const done = ticket !== null && isDone(ticket.status);
+  // DraftOut doesn't carry its drafting tier to the frontend, but
+  // confidence=0 with no cited sources only ever happens for the
+  // no-real-answer outcomes (no relevant KB match, a failed drafting
+  // call, or an out-of-domain short-circuit) — real drafts always have
+  // either a nonzero confidence or at least one source.
+  const hasRealDraft = done && !!ticket?.draft && (ticket.draft.confidence ?? 0) > 0;
   const seconds = (elapsed / 1000).toFixed(1);
 
   const stages: TraceStage[] = useMemo(() => {
@@ -264,7 +279,9 @@ export default function NewTicketPage() {
               <h2 className="text-base font-semibold">Pipeline</h2>
               <p className="mt-0.5 text-sm text-muted-foreground">
                 {done
-                  ? "Pipeline finished — the draft is ready for review."
+                  ? hasRealDraft
+                    ? "Pipeline finished — the draft is ready for review."
+                    : "Pipeline finished — no AI draft to send (no relevant knowledge-base match, or the message didn't look like a support question). Open the ticket to review and respond directly."
                   : timedOut
                     ? "Still processing after 90s. The worker may be busy or stopped."
                     : "Running on the Celery worker..."}
