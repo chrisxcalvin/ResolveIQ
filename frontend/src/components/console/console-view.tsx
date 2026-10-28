@@ -173,12 +173,29 @@ function QueuePanel({
           onChange={(e) => setStatusFilter(e.target.value)}
           className="w-full rounded-sm border border-border bg-transparent px-2 py-1.5 text-sm text-foreground"
         >
-          <option value="all">All statuses</option>
-          <option value="new">New</option>
-          <option value="classified">Classified</option>
-          <option value="drafted">Drafted</option>
-          <option value="resolved">Resolved</option>
-          <option value="escalated">Escalated</option>
+          {/* The closed trigger picks up bg-transparent/text-foreground fine
+              from its parent, but Chromium's native dropdown popup doesn't
+              inherit those for <option> — it falls back to a white popup
+              with the (light) foreground color, unreadable. Explicit inline
+              styles are what Chromium actually respects per-option. */}
+          <option value="all" style={{ backgroundColor: "var(--card)", color: "var(--foreground)" }}>
+            All statuses
+          </option>
+          <option value="new" style={{ backgroundColor: "var(--card)", color: "var(--foreground)" }}>
+            New
+          </option>
+          <option value="classified" style={{ backgroundColor: "var(--card)", color: "var(--foreground)" }}>
+            Classified
+          </option>
+          <option value="drafted" style={{ backgroundColor: "var(--card)", color: "var(--foreground)" }}>
+            Drafted
+          </option>
+          <option value="resolved" style={{ backgroundColor: "var(--card)", color: "var(--foreground)" }}>
+            Resolved
+          </option>
+          <option value="escalated" style={{ backgroundColor: "var(--card)", color: "var(--foreground)" }}>
+            Escalated
+          </option>
         </select>
       </div>
 
